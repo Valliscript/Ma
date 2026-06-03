@@ -45,6 +45,15 @@ async function initDb() {
   // migrations for already-deployed databases
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS banned BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+  // login audit log
+  await pool.query(`CREATE TABLE IF NOT EXISTS login_log(
+    id        SERIAL PRIMARY KEY,
+    discord_id TEXT,
+    username  TEXT,
+    ip        TEXT,
+    success   BOOLEAN,
+    created_at TIMESTAMPTZ DEFAULT now()
+  )`);
 }
 
 /* ---------------- Helpers ---------------- */
@@ -67,7 +76,7 @@ function isAdmin(interaction) {
      interaction.memberPermissions.has(PermissionFlagsBits.Administrator));
 }
 function pwError(pw) {
-  if (!pw || pw.length < 6) return 'Password must be at least 6 characters.';
+  if (!pw || pw.length < 8) return 'Password must be at least 8 characters.';
   if (pw.length > 64) return 'Password is too long (max 64).';
   return null;
 }
@@ -131,11 +140,11 @@ function passwordModal(id, title, label) {
   return new ModalBuilder().setCustomId(id).setTitle(title).addComponents(
     new ActionRowBuilder().addComponents(
       new TextInputBuilder().setCustomId('pw').setLabel(label).setStyle(TextInputStyle.Short)
-        .setMinLength(6).setMaxLength(64).setRequired(true).setPlaceholder('At least 6 characters')
+        .setMinLength(8).setMaxLength(64).setRequired(true).setPlaceholder('At least 8 characters')
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder().setCustomId('pw2').setLabel('Confirm password').setStyle(TextInputStyle.Short)
-        .setMinLength(6).setMaxLength(64).setRequired(true).setPlaceholder('Type it again')
+        .setMinLength(8).setMaxLength(64).setRequired(true).setPlaceholder('Type it again')
     )
   );
 }
@@ -313,8 +322,14 @@ app.post('/api/login', async (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Enter a username and password.' });
 
   const r = await pool.query('SELECT * FROM accounts WHERE username=$1', [username]);
-  if (!r.rowCount) return res.status(401).json({ error: 'Invalid login.' });
   const row = r.rows[0];
+  
+  // log attempt
+  const success = !!(row && !row.banned && await (async()=>{if(!row)return false;return await bcrypt.compare(password, row.password_hash)})());
+  await pool.query('INSERT INTO login_log(discord_id, username, ip, success) VALUES($1,$2,$3,$4)',
+    [row ? row.discord_id : null, username, ip, success]).catch(()=>{});
+  
+  if (!r.rowCount) return res.status(401).json({ error: 'Invalid login.' });
   if (row.banned) return res.status(403).json({ error: 'This account has been revoked.' });
   const ok = await bcrypt.compare(password, row.password_hash);
   if (!ok) return res.status(401).json({ error: 'Invalid login.' });
