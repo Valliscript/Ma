@@ -46,6 +46,11 @@ async function initDb() {
   await pool.query(`CREATE TABLE IF NOT EXISTS announcements(
     id SERIAL PRIMARY KEY, message TEXT NOT NULL, author TEXT, created_at TIMESTAMPTZ DEFAULT now())`);
   await pool.query(`CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS suggestions(
+    id SERIAL PRIMARY KEY, discord_id TEXT, username TEXT, text TEXT NOT NULL,
+    message_id TEXT, channel_id TEXT, status TEXT DEFAULT 'open', created_at TIMESTAMPTZ DEFAULT now())`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS suggestion_votes(
+    suggestion_id INT, user_id TEXT, value INT, PRIMARY KEY(suggestion_id, user_id))`);
 }
 async function getSetting(k, fb) { const r = await pool.query('SELECT value FROM settings WHERE key=$1', [k]); return r.rowCount ? r.rows[0].value : fb; }
 async function setSetting(k, v) { await pool.query('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2', [k, v]); }
@@ -122,7 +127,8 @@ function adminPanel() {
     .addFields(
       { name: 'Members', value: '`Whitelist` give access \u00b7 `Ban` ban+revoke \u00b7 `Unban` \u00b7 `Clear cooldown`' },
       { name: 'Content', value: '`Announce` post an update \u00b7 `Set channel` \u00b7 `Post access panel` \u00b7 `Post ticket panel`' },
-      { name: 'Channel', value: '`Lock` make a channel view/react-only \u00b7 `Unlock` restore it' }
+      { name: 'Channel', value: '`Lock` make a channel view/react-only \u00b7 `Unlock` restore it' },
+      { name: 'Community', value: '`Post suggestion panel` members submit ideas & vote' }
     ).setFooter({ text: 'Administrators only' });
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setEmoji('\u2705').setStyle(ButtonStyle.Success),
@@ -138,10 +144,40 @@ function adminPanel() {
     new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setEmoji('\uD83D\uDD12').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setEmoji('\uD83D\uDD13').setStyle(ButtonStyle.Secondary)
   );
-  return { embeds: [emb], components: [row1, row2] };
+  const row3 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Post suggestion panel').setEmoji('\uD83D\uDCA1').setStyle(ButtonStyle.Secondary)
+  );
+  return { embeds: [emb], components: [row1, row2, row3] };
 }
 function userPicker(id, ph) { return new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).setMinValues(1).setMaxValues(1)); }
 function channelPicker(id, ph) { return new ActionRowBuilder().addComponents(new ChannelSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).addChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)); }
+
+/* ----- suggestions board ----- */
+function suggestPanel() {
+  return {
+    embeds: [new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG' }).setTitle('Suggestions')
+      .setDescription('Got an idea? Submit it below \u2014 everyone can vote with \uD83D\uDC4D / \uD83D\uDC4E.')],
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('sug_open').setLabel('Make a suggestion').setEmoji('\uD83D\uDCA1').setStyle(ButtonStyle.Primary))]
+  };
+}
+function suggestionMessage(id, username, text, up, down) {
+  const score = up - down;
+  return {
+    embeds: [new EmbedBuilder().setColor(ACCENT).setAuthor({ name: '\uD83D\uDCA1 Suggestion' }).setDescription(text)
+      .addFields({ name: 'Score', value: '\uD83D\uDC4D ' + up + '\u2003\uD83D\uDC4E ' + down + '\u2003(' + (score >= 0 ? '+' : '') + score + ')' })
+      .setFooter({ text: '#' + id + ' \u00b7 by ' + username })],
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('sugv:up:' + id).setLabel(String(up)).setEmoji('\uD83D\uDC4D').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('sugv:down:' + id).setLabel(String(down)).setEmoji('\uD83D\uDC4E').setStyle(ButtonStyle.Danger))]
+  };
+}
+async function suggestionCounts(id) {
+  const r = await pool.query('SELECT value, COUNT(*) c FROM suggestion_votes WHERE suggestion_id=$1 GROUP BY value', [id]);
+  let up = 0, down = 0;
+  r.rows.forEach(x => { if (Number(x.value) === 1) up = Number(x.c); else if (Number(x.value) === -1) down = Number(x.c); });
+  return { up, down };
+}
 
 async function lockChannel(ch, lock) {
   const everyone = ch.guild.roles.everyone.id;
@@ -210,6 +246,9 @@ client.on('interactionCreate', async (i) => {
         case 'adm_postticket':
           await i.channel.send({ embeds: [ticketEmbed()], components: [ticketButton()] });
           return i.reply({ content: '\u2705 Ticket panel posted here.', ephemeral: true });
+        case 'adm_postsuggest':
+          await i.channel.send(suggestPanel());
+          return i.reply({ content: '\u2705 Suggestion panel posted here.', ephemeral: true });
       }
       return;
     }
@@ -288,6 +327,26 @@ client.on('interactionCreate', async (i) => {
         return;
       }
 
+      // suggestions (open to everyone)
+      if (i.customId === 'sug_open') {
+        return i.showModal(new ModalBuilder().setCustomId('sug_modal').setTitle('Make a suggestion').addComponents(
+          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('text').setLabel('Your suggestion').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000).setPlaceholder('What should we add or change?'))));
+      }
+      if (i.customId.startsWith('sugv:')) {
+        const parts = i.customId.split(':');
+        const val = parts[1] === 'up' ? 1 : -1;
+        const id = parseInt(parts[2], 10);
+        const ex = await pool.query('SELECT value FROM suggestion_votes WHERE suggestion_id=$1 AND user_id=$2', [id, i.user.id]);
+        if (ex.rowCount && Number(ex.rows[0].value) === val) {
+          await pool.query('DELETE FROM suggestion_votes WHERE suggestion_id=$1 AND user_id=$2', [id, i.user.id]);
+        } else {
+          await pool.query('INSERT INTO suggestion_votes(suggestion_id,user_id,value) VALUES($1,$2,$3) ON CONFLICT (suggestion_id,user_id) DO UPDATE SET value=$3', [id, i.user.id, val]);
+        }
+        const { up, down } = await suggestionCounts(id);
+        const s = (await pool.query('SELECT username, text FROM suggestions WHERE id=$1', [id])).rows[0] || { username: '?', text: '' };
+        return i.update(suggestionMessage(id, s.username, s.text, up, down));
+      }
+
       // account buttons (whitelisted buyers only)
       if (!['el_create', 'el_reset', 'el_status'].includes(i.customId)) return;
       if (!hasWhitelist(i.member)) return i.reply({ content: 'You need the **Whitelisted** role to do this.', ephemeral: true });
@@ -321,6 +380,15 @@ client.on('interactionCreate', async (i) => {
 
     /* ===== modals ===== */
     if (i.isModalSubmit()) {
+      // suggestions (everyone)
+      if (i.customId === 'sug_modal') {
+        const text = i.fields.getTextInputValue('text');
+        const r = await pool.query('INSERT INTO suggestions(discord_id, username, text) VALUES($1,$2,$3) RETURNING id', [i.user.id, i.user.username, text]);
+        const id = r.rows[0].id;
+        const msg = await i.channel.send(suggestionMessage(id, i.user.username, text, 0, 0));
+        await pool.query('UPDATE suggestions SET message_id=$1, channel_id=$2 WHERE id=$3', [msg.id, i.channel.id, id]);
+        return i.reply({ content: '\u2705 Suggestion posted! Others can vote on it now.', ephemeral: true });
+      }
       // admin: announcement
       if (i.customId === 'adm_announce_modal') {
         if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
