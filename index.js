@@ -12,7 +12,7 @@ const { Pool } = require('pg');
 const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits,
-  ModalBuilder, TextInputBuilder, TextInputStyle
+  ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType
 } = require('discord.js');
 
 const {
@@ -21,6 +21,7 @@ const {
 } = process.env;
 const PORT = process.env.PORT || 3000;
 const RESET_COOLDOWN_DAYS = Number(process.env.RESET_COOLDOWN_DAYS || 4);
+const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID || '';
 const DAY = 86400000;
 const ACCENT = 0xCDD2DB;
 
@@ -54,6 +55,26 @@ async function initDb() {
     success   BOOLEAN,
     created_at TIMESTAMPTZ DEFAULT now()
   )`);
+  // announcements shown on the website
+  await pool.query(`CREATE TABLE IF NOT EXISTS announcements(
+    id         SERIAL PRIMARY KEY,
+    message    TEXT NOT NULL,
+    author     TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+  )`);
+  // key/value settings (e.g. announcement channel)
+  await pool.query(`CREATE TABLE IF NOT EXISTS settings(
+    key   TEXT PRIMARY KEY,
+    value TEXT
+  )`);
+}
+
+async function getSetting(key, fallback) {
+  const r = await pool.query('SELECT value FROM settings WHERE key=$1', [key]);
+  return r.rowCount ? r.rows[0].value : fallback;
+}
+async function setSetting(key, value) {
+  await pool.query('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2', [key, value]);
 }
 
 /* ---------------- Helpers ---------------- */
@@ -100,6 +121,14 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('removecooldown').setDescription("Clear a member's password-reset cooldown")
     .addUserOption(o => o.setName('user').setDescription('Member').setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('announcement').setDescription('Post an update (shows on the website + announcement channel)')
+    .addStringOption(o => o.setName('message').setDescription('What to announce').setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('setchannel').setDescription('Set the channel where announcements are posted')
+    .addChannelOption(o => o.setName('channel').setDescription('Announcement channel').setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('ticketpanel').setDescription('Post the purchase ticket panel')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 ].map(c => c.toJSON());
 
@@ -219,11 +248,81 @@ client.on('interactionCreate', async (i) => {
         if (!r.rowCount) return i.reply({ content: 'That user doesn\u2019t have an account.', ephemeral: true });
         return i.reply({ content: '\u2705 Reset cooldown cleared for <@' + u.id + '> (`' + r.rows[0].username + '`). They can reset now.', ephemeral: true });
       }
+
+      if (i.commandName === 'announcement') {
+        const msg = i.options.getString('message');
+        await pool.query('INSERT INTO announcements(message, author) VALUES($1,$2)', [msg, i.user.username]);
+        let note = 'Saved \u2014 it will show on the website Update Logs';
+        const chId = await getSetting('announce_channel_id', ANNOUNCE_CHANNEL_ID);
+        if (chId) {
+          try {
+            const ch = await client.channels.fetch(chId);
+            const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG \u00b7 Update' }).setDescription(msg).setTimestamp(new Date());
+            await ch.send({ embeds: [emb] });
+            note += ' and posted to <#' + chId + '>';
+          } catch (e) { note += ' (couldn\u2019t post to the announcement channel \u2014 check the ID/permissions)'; }
+        } else {
+          note += ' (no announcement channel set \u2014 use /setchannel)';
+        }
+        return i.reply({ content: '\uD83D\uDCE2 ' + note + '.', ephemeral: true });
+      }
+
+      if (i.commandName === 'setchannel') {
+        const ch = i.options.getChannel('channel');
+        await setSetting('announce_channel_id', ch.id);
+        return i.reply({ content: '\u2705 Announcements will now post to <#' + ch.id + '>.', ephemeral: true });
+      }
+
+      if (i.commandName === 'ticketpanel') {
+        const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG' }).setTitle('Purchase')
+          .setDescription('Want in? Open a ticket and we\u2019ll get you set up.');
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('el_ticket_open').setLabel('Open ticket to purchase').setEmoji('\uD83D\uDED2').setStyle(ButtonStyle.Success)
+        );
+        await i.channel.send({ embeds: [emb], components: [row] });
+        return i.reply({ content: 'Ticket panel posted.', ephemeral: true });
+      }
       return;
     }
 
     /* ===== buttons ===== */
     if (i.isButton()) {
+      // ---- purchase tickets (open to everyone) ----
+      if (i.customId === 'el_ticket_open') {
+        const existing = i.guild.channels.cache.find(c => c.topic === 'ticket:' + i.user.id);
+        if (existing) return i.reply({ content: 'You already have an open ticket: <#' + existing.id + '>.', ephemeral: true });
+        try {
+          const ch = await i.guild.channels.create({
+            name: 'ticket-' + (i.user.username || 'buyer').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16),
+            type: ChannelType.GuildText,
+            topic: 'ticket:' + i.user.id,
+            permissionOverwrites: [
+              { id: i.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+              { id: i.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+              { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] }
+            ]
+          });
+          const emb = new EmbedBuilder().setColor(ACCENT).setTitle('\uD83D\uDED2 Purchase ticket')
+            .setDescription('Hey <@' + i.user.id + '> \u2014 thanks for your interest! A team member will be with you shortly. Let us know what you\u2019re after.');
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('el_ticket_close').setLabel('Close ticket').setEmoji('\uD83D\uDD12').setStyle(ButtonStyle.Danger)
+          );
+          await ch.send({ content: '<@' + i.user.id + '>', embeds: [emb], components: [row] });
+          return i.reply({ content: '\u2705 Ticket opened: <#' + ch.id + '>', ephemeral: true });
+        } catch (e) {
+          console.error('ticket create error', e);
+          return i.reply({ content: 'Couldn\u2019t open a ticket \u2014 I need the **Manage Channels** permission.', ephemeral: true });
+        }
+      }
+      if (i.customId === 'el_ticket_close') {
+        const isOwner = i.channel.topic === 'ticket:' + i.user.id;
+        if (!isOwner && !isAdmin(i)) return i.reply({ content: 'Only the ticket owner or an admin can close this.', ephemeral: true });
+        await i.reply({ content: 'Closing this ticket in 5 seconds\u2026' });
+        setTimeout(() => { i.channel.delete().catch(() => {}); }, 5000);
+        return;
+      }
+
+      // ---- account buttons (whitelisted buyers only) ----
       if (!['el_create', 'el_reset', 'el_status'].includes(i.customId)) return;
       if (!hasWhitelist(i.member)) return i.reply({ content: 'You need the **Whitelisted** role to do this.', ephemeral: true });
 
@@ -313,6 +412,15 @@ function rateLimited(ip) {
 }
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+app.get('/api/announcements', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT message, created_at FROM announcements ORDER BY created_at DESC LIMIT 15');
+    res.json({ announcements: r.rows });
+  } catch (e) {
+    res.json({ announcements: [] });
+  }
+});
 
 app.post('/api/login', async (req, res) => {
   const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'x').toString();
