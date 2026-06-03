@@ -105,17 +105,19 @@ function panelEmbed() {
   return new EmbedBuilder()
     .setColor(ACCENT)
     .setAuthor({ name: 'EVERLONG' })
-    .setTitle('Members Access')
+    .setTitle('Member Access')
     .setDescription(
-      'Your private key to the Everlong self-improvement system.\n' +
+      'Welcome â this is where you unlock your access to the Everlong site after your purchase.\n\n' +
+      'Once you\u2019ve **purchased**, you\u2019ll receive the **Whitelisted** role. Then just use the buttons below.\n' +
       '\u200b'
     )
     .addFields(
-      { name: '\u2460  Create account', value: 'Set your own password. Username is generated for you. One per member.', inline: false },
-      { name: '\u2461  Reset password', value: 'Pick a new password and log in on a new device. Once every **' + RESET_COOLDOWN_DAYS + ' days**.', inline: false },
-      { name: '\u2462  My status', value: 'Check your username, login state, and next reset.', inline: false }
+      { name: '\uD83D\uDD11  Press "Create account"', value: 'To set your **own password** and get your login. Your username is made for you. One account per buyer.', inline: false },
+      { name: '\u267B\uFE0F  Press "Reset password"', value: 'Forgot it, or logging in on a new device? Get a fresh password here \u2014 once every **' + RESET_COOLDOWN_DAYS + ' days**.', inline: false },
+      { name: '\uD83D\uDD0D  Press "My status"', value: 'To check your username, whether you\u2019re logged in, and your next reset.', inline: false },
+      { name: '\u200b', value: '\uD83D\uDED2 **No access yet?** Make your purchase first \u2014 you can use this panel once you\u2019ve bought and received the Whitelisted role.', inline: false }
     )
-    .setFooter({ text: 'Requires the Whitelisted role \u00b7 your password is shown once' });
+    .setFooter({ text: 'Your password is shown once \u2014 save it somewhere safe.' });
 }
 function panelButtons() {
   return new ActionRowBuilder().addComponents(
