@@ -41,6 +41,7 @@ async function initDb() {
     session_token TEXT, created_at TIMESTAMPTZ DEFAULT now(), last_reset_at TIMESTAMPTZ DEFAULT now())`);
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS banned BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS perm BOOLEAN DEFAULT false`);
   await pool.query(`CREATE TABLE IF NOT EXISTS login_log(
     id SERIAL PRIMARY KEY, discord_id TEXT, username TEXT, ip TEXT, success BOOLEAN, created_at TIMESTAMPTZ DEFAULT now())`);
   await pool.query(`CREATE TABLE IF NOT EXISTS announcements(
@@ -82,15 +83,21 @@ async function registerCommands() {
 }
 
 /* ----- member-facing access panel (for buyers) ----- */
+const SITE_ICON = 'https://everlongsguide.netlify.app/assets/icon-512.png';
+
 function accessEmbed() {
-  return new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG' }).setTitle('Member Access')
-    .setDescription('Unlock your access to the Everlong site after your purchase.\n\nOnce you\u2019ve **purchased**, you\u2019ll receive the **Whitelisted** role. Then use the buttons below.\n\u200b')
+  return new EmbedBuilder()
+    .setColor(ACCENT)
+    .setAuthor({ name: 'EVERLONG Â· MEMBER ACCESS' })
+    .setThumbnail(SITE_ICON)
+    .setTitle('Your key to the system')
+    .setDescription('Purchased access? Set up your private login below.\n\n> Requires the **Whitelisted** role â granted after purchase.')
     .addFields(
-      { name: '\uD83D\uDD11  Press "Create account"', value: 'Set your **own password** and get your login. Username is made for you. One per buyer.' },
-      { name: '\u267B\uFE0F  Press "Reset password"', value: 'New password / new device. Once every **' + RESET_COOLDOWN_DAYS + ' days**.' },
-      { name: '\uD83D\uDD0D  Press "My status"', value: 'See your username, login status, and next reset.' },
-      { name: '\u200b', value: '\uD83D\uDED2 **No access yet?** Purchase first \u2014 you can use this once you have the Whitelisted role.' }
-    ).setFooter({ text: 'Your password is shown once \u2014 save it.' });
+      { name: 'ð Create', value: 'Set your password & get your login.', inline: true },
+      { name: 'â»ï¸ Reset', value: 'New device Â· every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
+      { name: 'ð Status', value: 'Check your account.', inline: true }
+    )
+    .setFooter({ text: 'everlongsguide.netlify.app Â· your password is shown once' });
 }
 function accessButtons() {
   return new ActionRowBuilder().addComponents(
@@ -122,32 +129,47 @@ async function dmCreds(i, username, password, title) {
 
 /* ----- admin control panel ----- */
 function adminPanel() {
-  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG' }).setTitle('Admin Control Panel')
-    .setDescription('Everything in one place. Buttons only \u2014 no commands.\n\u200b')
+  const emb = new EmbedBuilder()
+    .setColor(ACCENT)
+    .setAuthor({ name: 'EVERLONG Â· ADMIN' })
+    .setThumbnail(SITE_ICON)
+    .setTitle('Control Panel')
+    .setDescription('Everything you need, one tap away.')
     .addFields(
-      { name: 'Members', value: '`Whitelist` give access \u00b7 `Ban` ban+revoke \u00b7 `Unban` \u00b7 `Clear cooldown`' },
-      { name: 'Content', value: '`Announce` post an update \u00b7 `Set channel` \u00b7 `Post access panel` \u00b7 `Post ticket panel`' },
-      { name: 'Channel', value: '`Lock` make a channel view/react-only \u00b7 `Unlock` restore it' },
-      { name: 'Community', value: '`Post suggestion panel` members submit ideas & vote' }
-    ).setFooter({ text: 'Administrators only' });
+      { name: 'ð¤ Members', value: 'Whitelist Â· Ban Â· Unban Â· Cooldown Â· Force-unlock', inline: false },
+      { name: 'ðï¸ Accounts', value: 'Perm account Â· Lookup Â· Wipe Â· Stats Â· Logins', inline: false },
+      { name: 'ð£ Content', value: 'Announce Â· Set channel Â· Access / Ticket / Suggestion panels', inline: false },
+      { name: 'ð ï¸ Channel', value: 'Lock Â· Unlock Â· Slowmode Â· Purge', inline: false }
+    )
+    .setFooter({ text: 'Administrators only' });
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setEmoji('\u2705').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setEmoji('\uD83D\uDD28').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setEmoji('â').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setEmoji('ð¨').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId('adm_unban').setLabel('Unban').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_cooldown').setLabel('Clear cooldown').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setEmoji('\uD83D\uDCE2').setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId('adm_cooldown').setLabel('Cooldown').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_forceunlock').setLabel('Force-unlock').setStyle(ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_setchannel').setLabel('Set channel').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postaccess').setLabel('Post access panel').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Post ticket panel').setEmoji('\uD83D\uDED2').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setEmoji('\uD83D\uDD12').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setEmoji('\uD83D\uDD13').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_perm').setLabel('Perm account').setEmoji('ðï¸').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_lookup').setLabel('Lookup').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_wipe').setLabel('Wipe').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('adm_stats').setLabel('Stats').setEmoji('ð').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_logins').setLabel('Logins').setStyle(ButtonStyle.Secondary)
   );
   const row3 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Post suggestion panel').setEmoji('\uD83D\uDCA1').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setEmoji('ð£').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_setchannel').setLabel('Set channel').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_postaccess').setLabel('Access panel').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Ticket panel').setEmoji('ð').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Suggestions').setEmoji('ð¡').setStyle(ButtonStyle.Secondary)
   );
-  return { embeds: [emb], components: [row1, row2, row3] };
+  const row4 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setEmoji('ð').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setEmoji('ð').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_slowmode').setLabel('Slowmode').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_purge').setLabel('Purge').setEmoji('ð§¹').setStyle(ButtonStyle.Danger)
+  );
+  return { embeds: [emb], components: [row1, row2, row3, row4] };
 }
 function userPicker(id, ph) { return new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).setMinValues(1).setMaxValues(1)); }
 function channelPicker(id, ph) { return new ActionRowBuilder().addComponents(new ChannelSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).addChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)); }
@@ -215,6 +237,30 @@ async function postAnnouncement(msg, author) {
   } catch (e) { return 'saved to the website (couldn\u2019t post to the channel \u2014 check ID/permissions)'; }
 }
 
+async function adminStats(i) {
+  const a = (await pool.query("SELECT count(*)::int total, count(*) filter (where session_token is not null)::int active, count(*) filter (where banned)::int banned, count(*) filter (where perm)::int perm FROM accounts")).rows[0];
+  const today = (await pool.query("SELECT count(*) filter (where success)::int ok, count(*) filter (where not success)::int fail FROM login_log WHERE created_at > now() - interval '24 hours'")).rows[0];
+  const sug = (await pool.query('SELECT count(*)::int c FROM suggestions')).rows[0];
+  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG \u00b7 STATS' }).setThumbnail(SITE_ICON).setTitle('At a glance')
+    .addFields(
+      { name: '\uD83D\uDC65 Accounts', value: String(a.total), inline: true },
+      { name: '\uD83D\uDFE2 Logged in now', value: String(a.active), inline: true },
+      { name: '\uD83D\uDDDD\uFE0F Permanent', value: String(a.perm), inline: true },
+      { name: '\uD83D\uDD28 Banned', value: String(a.banned), inline: true },
+      { name: '\uD83D\uDD11 Logins (24h)', value: today.ok + ' ok \u00b7 ' + today.fail + ' failed', inline: true },
+      { name: '\uD83D\uDCA1 Suggestions', value: String(sug.c), inline: true }
+    ).setTimestamp(new Date());
+  return i.reply({ embeds: [emb], ephemeral: true });
+}
+
+async function adminLogins(i) {
+  const r = await pool.query('SELECT username, ip, success, created_at FROM login_log ORDER BY created_at DESC LIMIT 10');
+  if (!r.rowCount) return i.reply({ content: 'No login attempts logged yet.', ephemeral: true });
+  const lines = r.rows.map(x => (x.success ? '\u2705' : '\u274C') + ' `' + (x.username || '?') + '` \u2014 <t:' + Math.floor(new Date(x.created_at).getTime() / 1000) + ':R>');
+  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG \u00b7 RECENT LOGINS' }).setDescription(lines.join('\n')).setFooter({ text: 'Last 10 attempts' });
+  return i.reply({ embeds: [emb], ephemeral: true });
+}
+
 /* ---------------- Interactions ---------------- */
 client.on('interactionCreate', async (i) => {
   try {
@@ -249,6 +295,26 @@ client.on('interactionCreate', async (i) => {
         case 'adm_postsuggest':
           await i.channel.send(suggestPanel());
           return i.reply({ content: '\u2705 Suggestion panel posted here.', ephemeral: true });
+        case 'adm_forceunlock':
+          return i.reply({ content: 'Pick a member to **force-unlock** (clears their active session so they can log in again now):', components: [userPicker('adm_pick_forceunlock', 'Member to unlock')], ephemeral: true });
+        case 'adm_lookup':
+          return i.reply({ content: 'Pick a member to **look up**:', components: [userPicker('adm_pick_lookup', 'Member')], ephemeral: true });
+        case 'adm_wipe':
+          return i.reply({ content: '\u26A0\uFE0F Pick a member whose account you want to **permanently delete**:', components: [userPicker('adm_pick_wipe', 'Member to wipe')], ephemeral: true });
+        case 'adm_perm':
+          return i.showModal(new ModalBuilder().setCustomId('adm_perm_modal').setTitle('Create a permanent account').addComponents(
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('u').setLabel('Username').setStyle(TextInputStyle.Short).setRequired(true).setMinLength(3).setMaxLength(20).setPlaceholder('e.g. owner')),
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('p').setLabel('Password (min 8 chars)').setStyle(TextInputStyle.Short).setRequired(true).setMinLength(8).setMaxLength(64).setPlaceholder('choose a strong password'))));
+        case 'adm_stats':
+          return adminStats(i);
+        case 'adm_logins':
+          return adminLogins(i);
+        case 'adm_slowmode':
+          return i.showModal(new ModalBuilder().setCustomId('adm_slowmode_modal').setTitle('Set slowmode (this channel)').addComponents(
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('s').setLabel('Seconds between messages (0 = off)').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(5).setPlaceholder('0 - 21600'))));
+        case 'adm_purge':
+          return i.showModal(new ModalBuilder().setCustomId('adm_purge_modal').setTitle('Purge messages (this channel)').addComponents(
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('n').setLabel('How many messages to delete?').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3).setPlaceholder('1 - 100'))));
       }
       return;
     }
@@ -276,6 +342,32 @@ client.on('interactionCreate', async (i) => {
         const r = await pool.query("UPDATE accounts SET last_reset_at = now() - ($1 || ' days')::interval WHERE discord_id=$2 RETURNING username", [String(RESET_COOLDOWN_DAYS + 1), uid]);
         if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
         return i.update({ content: '\u2705 Cooldown cleared for <@' + uid + '> (`' + r.rows[0].username + '`).', components: [] });
+      }
+      if (i.customId === 'adm_pick_forceunlock') {
+        const r = await pool.query('UPDATE accounts SET session_token=NULL WHERE discord_id=$1 RETURNING username', [uid]);
+        if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
+        return i.update({ content: '\uD83D\uDD13 Session cleared for <@' + uid + '> (`' + r.rows[0].username + '`). They can log in again right now.', components: [] });
+      }
+      if (i.customId === 'adm_pick_lookup') {
+        const r = await pool.query('SELECT username, banned, perm, session_token, created_at, last_login_at, last_reset_at FROM accounts WHERE discord_id=$1', [uid]);
+        if (!r.rowCount) return i.update({ content: 'No account for <@' + uid + '> yet.', components: [] });
+        const a = r.rows[0];
+        const fmt = (d) => d ? '<t:' + Math.floor(new Date(d).getTime() / 1000) + ':R>' : '\u2014';
+        const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'Account lookup' }).setTitle(a.username)
+          .addFields(
+            { name: 'Type', value: a.perm ? '\uD83D\uDDDD\uFE0F Permanent' : 'Standard', inline: true },
+            { name: 'Status', value: a.banned ? '\uD83D\uDD28 Banned' : '\u2705 Active', inline: true },
+            { name: 'Logged in now', value: a.session_token ? 'Yes' : 'No', inline: true },
+            { name: 'Created', value: fmt(a.created_at), inline: true },
+            { name: 'Last login', value: fmt(a.last_login_at), inline: true },
+            { name: 'Last reset', value: fmt(a.last_reset_at), inline: true }
+          ).setFooter({ text: 'User ID ' + uid });
+        return i.update({ content: '', embeds: [emb], components: [] });
+      }
+      if (i.customId === 'adm_pick_wipe') {
+        const r = await pool.query('DELETE FROM accounts WHERE discord_id=$1 RETURNING username', [uid]);
+        if (!r.rowCount) return i.update({ content: 'That user has no account to wipe.', components: [] });
+        return i.update({ content: '\uD83D\uDDD1\uFE0F Deleted the account `' + r.rows[0].username + '` for <@' + uid + '>. They can create a fresh one.', components: [] });
       }
       return;
     }
@@ -406,6 +498,47 @@ client.on('interactionCreate', async (i) => {
         try { await i.guild.bans.remove(uid); note += ' \u00b7 unbanned from server'; } catch (e) { note += ' \u00b7 (was not server-banned)'; }
         return i.reply({ content: '\u2705 <@' + uid + '>: ' + note + '.', ephemeral: true });
       }
+      // admin: create permanent account
+      if (i.customId === 'adm_perm_modal') {
+        if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+        const u = i.fields.getTextInputValue('u').trim();
+        const p = i.fields.getTextInputValue('p');
+        if (!/^[a-zA-Z0-9_]{3,20}$/.test(u)) return i.reply({ content: 'Username must be 3\u201320 chars: letters, numbers, underscores.', ephemeral: true });
+        const bad = pwError(p); if (bad) return i.reply({ content: bad, ephemeral: true });
+        const taken = (await pool.query('SELECT 1 FROM accounts WHERE lower(username)=lower($1)', [u])).rowCount;
+        if (taken) return i.reply({ content: 'That username is already taken \u2014 pick another.', ephemeral: true });
+        const hash = await bcrypt.hash(p, 10);
+        const did = 'perm-' + crypto.randomBytes(8).toString('hex');
+        await pool.query('INSERT INTO accounts(discord_id, username, password_hash, session_token, last_reset_at, perm) VALUES ($1,$2,$3,NULL,now(),true)', [did, u, hash]);
+        const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG \u00b7 PERMANENT ACCOUNT' }).setThumbnail(SITE_ICON)
+          .setTitle('Account ready')
+          .setDescription('Log in and out as much as you want \u2014 **no single-use lock, no cooldown**, multiple devices fine.')
+          .addFields(
+            { name: 'Username', value: '`' + u + '`', inline: true },
+            { name: 'Password', value: '`' + p + '`', inline: true },
+            { name: 'Login', value: 'everlongsguide.netlify.app', inline: false }
+          ).setFooter({ text: 'Save these \u2014 shown once here.' });
+        return i.reply({ embeds: [emb], ephemeral: true });
+      }
+      // admin: slowmode (this channel)
+      if (i.customId === 'adm_slowmode_modal') {
+        if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+        let s = parseInt(i.fields.getTextInputValue('s').trim(), 10);
+        if (!Number.isFinite(s) || s < 0 || s > 21600) return i.reply({ content: 'Enter a number of seconds between 0 and 21600.', ephemeral: true });
+        try { await i.channel.setRateLimitPerUser(s); }
+        catch (e) { return i.reply({ content: 'Couldn\u2019t set slowmode \u2014 I need **Manage Channels** here.', ephemeral: true }); }
+        return i.reply({ content: s === 0 ? '\u2705 Slowmode turned off in this channel.' : '\u2705 Slowmode set to **' + s + 's** in this channel.', ephemeral: true });
+      }
+      // admin: purge (this channel)
+      if (i.customId === 'adm_purge_modal') {
+        if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+        let n = parseInt(i.fields.getTextInputValue('n').trim(), 10);
+        if (!Number.isFinite(n) || n < 1 || n > 100) return i.reply({ content: 'Enter a number between 1 and 100.', ephemeral: true });
+        try {
+          const del = await i.channel.bulkDelete(n, true);
+          return i.reply({ content: '\uD83E\uDDF9 Deleted **' + del.size + '** message(s). (Messages older than 14 days can\u2019t be bulk-deleted.)', ephemeral: true });
+        } catch (e) { return i.reply({ content: 'Couldn\u2019t purge \u2014 I need **Manage Messages** here.', ephemeral: true }); }
+      }
       // member: create / reset
       if (i.customId === 'el_create_modal' || i.customId === 'el_reset_modal') {
         if (!hasWhitelist(i.member)) return i.reply({ content: 'You need the **Whitelisted** role.', ephemeral: true });
@@ -465,7 +598,7 @@ app.post('/api/login', async (req, res) => {
   if (row.banned) return res.status(403).json({ error: 'This account has been revoked.' });
   const ok = await bcrypt.compare(password, row.password_hash);
   if (!ok) return res.status(401).json({ error: 'Invalid login.' });
-  if (row.session_token) return res.status(409).json({ error: 'This account is already in use. Reset it in the Everlong Discord to log in again.' });
+  if (row.session_token && !row.perm) return res.status(409).json({ error: 'This account is already in use. Reset it in the Everlong Discord to log in again.' });
   const sid = crypto.randomBytes(16).toString('hex');
   await pool.query('UPDATE accounts SET session_token=$1, last_login_at=now() WHERE discord_id=$2', [sid, row.discord_id]);
   const token = jwt.sign({ sub: row.discord_id, u: row.username, st: sid }, JWT_SECRET, { expiresIn: '60d' });
@@ -476,8 +609,9 @@ app.get('/api/verify', async (req, res) => {
   let payload;
   try { payload = jwt.verify(auth, JWT_SECRET); } catch (e) { return res.status(401).json({ ok: false, error: 'expired' }); }
   try {
-    const r = await pool.query('SELECT session_token, username, banned FROM accounts WHERE discord_id=$1', [payload.sub]);
-    if (!r.rowCount || r.rows[0].banned || r.rows[0].session_token !== payload.st) return res.status(401).json({ ok: false, error: 'revoked' });
+    const r = await pool.query('SELECT session_token, username, banned, perm FROM accounts WHERE discord_id=$1', [payload.sub]);
+    if (!r.rowCount || r.rows[0].banned) return res.status(401).json({ ok: false, error: 'revoked' });
+    if (!r.rows[0].perm && r.rows[0].session_token !== payload.st) return res.status(401).json({ ok: false, error: 'revoked' });
     res.json({ ok: true, username: r.rows[0].username });
   } catch (e) { console.error('verify error', e); res.status(500).json({ ok: false }); }
 });
