@@ -1,3 +1,4 @@
+
 /* Everlong access bot + login API
  * One Railway service: Discord bot (buyer access, admin panel, tickets) + Express login API.
  * Storage: Postgres (Railway "Add Postgres" sets DATABASE_URL).
@@ -25,7 +26,7 @@ const RESET_COOLDOWN_DAYS = Number(process.env.RESET_COOLDOWN_DAYS || 4);
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID || '';
 const DAY = 86400000;
 const ACCENT = 0xCDD2DB;
-const ADMIN_COLOR = 0x4C6EF5;
+const ADMIN_COLOR = 0x0A0B0D;
 
 for (const k of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','WHITELIST_ROLE_ID','JWT_SECRET','DATABASE_URL']) {
   if (!process.env[k]) console.warn('[warn] missing env var: ' + k);
@@ -137,49 +138,54 @@ function adminPanel() {
     .setAuthor({ name: 'EVERLONG | ADMIN' })
     .setThumbnail(SITE_ICON)
     .setTitle('Control Panel')
-    .setDescription('Tap a tool. Everything is admin-only.')
+    .setDescription('Buttons are colour-coded by section:')
     .addFields(
-      { name: '\uD83D\uDD11 Site access', value: 'Whitelist | Unwhitelist | Force-unlock | Cooldown | Perm account', inline: false },
-      { name: '\uD83D\uDCC2 Accounts', value: 'Lookup | Wipe | Stats | Logins | Set channel', inline: false },
-      { name: '\u26D4 Moderation', value: 'Ban | Unban | Kick | Timeout | Untimeout', inline: false },
-      { name: '\uD83D\uDD27 Channel', value: 'Lock | Unlock | Slowmode | Purge | Say', inline: false },
-      { name: '\uD83D\uDCE3 Content', value: 'Announce | Sale link | Access / Ticket / Suggestion panels', inline: false }
+      { name: '\uD83D\uDFE2 Site access', value: 'Whitelist | Unwhitelist | Force-unlock | Cooldown | Perm account', inline: false },
+      { name: '\u26AA Accounts', value: 'Lookup | Wipe | Stats | Logins | Set channel', inline: false },
+      { name: '\uD83D\uDD34 Moderation', value: 'Ban | Unban | Kick | Timeout | Untimeout', inline: false },
+      { name: '\uD83D\uDD35 Channel', value: 'Lock | Unlock | Slowmode | Purge | Say', inline: false },
+      { name: '\uD83D\uDFE2 Content', value: 'Announce | Sale link | Access / Ticket / Suggestion panels', inline: false }
     )
     .setFooter({ text: 'Administrators only' });
+  // Row 1 - Site access (green)
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setEmoji('\u2705').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_unwhitelist').setLabel('Unwhitelist').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_forceunlock').setLabel('Force-unlock').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_cooldown').setLabel('Cooldown').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_perm').setLabel('Perm account').setEmoji('\uD83D\uDD11').setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_unwhitelist').setLabel('Unwhitelist').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_forceunlock').setLabel('Force-unlock').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_cooldown').setLabel('Cooldown').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_perm').setLabel('Perm account').setStyle(ButtonStyle.Success)
   );
+  // Row 2 - Accounts (grey)
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('adm_lookup').setLabel('Lookup').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_wipe').setLabel('Wipe').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_stats').setLabel('Stats').setEmoji('\uD83D\uDCCA').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_wipe').setLabel('Wipe').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_stats').setLabel('Stats').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_logins').setLabel('Logins').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_setchannel').setLabel('Set channel').setStyle(ButtonStyle.Secondary)
   );
+  // Row 3 - Moderation (red)
   const row3 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setEmoji('\uD83D\uDD28').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_unban').setLabel('Unban').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('adm_unban').setLabel('Unban').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId('adm_kick').setLabel('Kick').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_timeout').setLabel('Timeout').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_untimeout').setLabel('Untimeout').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_timeout').setLabel('Timeout').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('adm_untimeout').setLabel('Untimeout').setStyle(ButtonStyle.Danger)
   );
+  // Row 4 - Channel (blurple)
   const row4 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setEmoji('\uD83D\uDD12').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setEmoji('\uD83D\uDD13').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_slowmode').setLabel('Slowmode').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_purge').setLabel('Purge').setEmoji('\uD83E\uDDF9').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_say').setLabel('Say').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_slowmode').setLabel('Slowmode').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_purge').setLabel('Purge').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_say').setLabel('Say').setStyle(ButtonStyle.Primary)
   );
+  // Row 5 - Content (green)
   const row5 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setEmoji('\uD83D\uDCE3').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('adm_sale').setLabel('Sale link').setEmoji('\uD83D\uDCB8').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_postaccess').setLabel('Access panel').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Ticket panel').setEmoji('\uD83D\uDED2').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Suggestions').setEmoji('\uD83D\uDCA1').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_sale').setLabel('Sale link').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_postaccess').setLabel('Access panel').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Ticket panel').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Suggestions').setStyle(ButtonStyle.Success)
   );
   return { embeds: [emb], components: [row1, row2, row3, row4, row5] };
 }
