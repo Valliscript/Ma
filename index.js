@@ -143,31 +143,31 @@ function adminPanel() {
     )
     .setFooter({ text: 'Administrators only' });
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setEmoji('â').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setEmoji('ð¨').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setEmoji('\u2705').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setEmoji('\uD83D\uDD28').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId('adm_unban').setLabel('Unban').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_cooldown').setLabel('Cooldown').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_forceunlock').setLabel('Force-unlock').setStyle(ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_perm').setLabel('Perm account').setEmoji('ðï¸').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_perm').setLabel('Perm account').setEmoji('\uD83D\uDD11').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('adm_lookup').setLabel('Lookup').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_wipe').setLabel('Wipe').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_stats').setLabel('Stats').setEmoji('ð').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_stats').setLabel('Stats').setEmoji('\uD83D\uDCCA').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_logins').setLabel('Logins').setStyle(ButtonStyle.Secondary)
   );
   const row3 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setEmoji('ð£').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setEmoji('\uD83D\uDCE3').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('adm_setchannel').setLabel('Set channel').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_postaccess').setLabel('Access panel').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Ticket panel').setEmoji('ð').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Suggestions').setEmoji('ð¡').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Ticket panel').setEmoji('\uD83D\uDED2').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Suggestions').setEmoji('\uD83D\uDCA1').setStyle(ButtonStyle.Secondary)
   );
   const row4 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setEmoji('ð').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setEmoji('ð').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setEmoji('\uD83D\uDD12').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setEmoji('\uD83D\uDD13').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_slowmode').setLabel('Slowmode').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_purge').setLabel('Purge').setEmoji('ð§¹').setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId('adm_purge').setLabel('Purge').setEmoji('\uD83E\uDDF9').setStyle(ButtonStyle.Danger)
   );
   return { embeds: [emb], components: [row1, row2, row3, row4] };
 }
@@ -571,6 +571,9 @@ client.on('interactionCreate', async (i) => {
 });
 
 client.once('ready', () => console.log('Discord bot online as ' + client.user.tag));
+client.on('error', (e) => console.error('client error', e));
+process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
+process.on('uncaughtException', (e) => console.error('uncaughtException', e));
 
 /* ---------------- Login API ---------------- */
 const app = express();
