@@ -1,3 +1,4 @@
+
 /* Everlong access bot + login API
  * One Railway service: Discord bot (buyer access, admin panel, tickets) + Express login API.
  * Storage: Postgres (Railway "Add Postgres" sets DATABASE_URL).
@@ -70,7 +71,7 @@ function pwError(pw) { if (!pw || pw.length < 8) return 'Password must be at lea
 /* ---------------- Discord client ---------------- */
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-/* one admin command only â everything else is buttons */
+/* one admin command only - everything else is buttons */
 const commands = [
   new SlashCommandBuilder().setName('adminpanel').setDescription('Open the Everlong admin control panel')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -88,21 +89,21 @@ const SITE_ICON = 'https://everlongsguide.netlify.app/assets/icon-512.png';
 function accessEmbed() {
   return new EmbedBuilder()
     .setColor(ACCENT)
-    .setAuthor({ name: 'EVERLONG Â· MEMBER ACCESS' })
+    .setAuthor({ name: 'EVERLONG | MEMBER ACCESS' })
     .setThumbnail(SITE_ICON)
     .setTitle('Your key to the system')
-    .setDescription('Purchased access? Set up your private login below.\n\n> Requires the **Whitelisted** role â granted after purchase.')
+    .setDescription('Purchased access? Set up your private login below.\n\n> Requires the **Whitelisted** role - granted after purchase.')
     .addFields(
       { name: 'ð Create', value: 'Set your password & get your login.', inline: true },
-      { name: 'â»ï¸ Reset', value: 'New device Â· every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
+      { name: 'ð Reset', value: 'New device | every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
       { name: 'ð Status', value: 'Check your account.', inline: true }
     )
-    .setFooter({ text: 'everlongsguide.netlify.app Â· your password is shown once' });
+    .setFooter({ text: 'everlongsguide.netlify.app | your password is shown once' });
 }
 function accessButtons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('el_create').setLabel('Create account').setEmoji('\uD83D\uDD11').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('el_reset').setLabel('Reset password').setEmoji('\u267B\uFE0F').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('el_reset').setLabel('Reset password').setEmoji('\uD83D\uDD04').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('el_status').setLabel('My status').setEmoji('\uD83D\uDD0D').setStyle(ButtonStyle.Secondary)
   );
 }
@@ -123,23 +124,23 @@ function passwordModal(id, title, label) {
 }
 async function dmCreds(i, username, password, title) {
   const body = '**' + title + '**\nLog in at the Everlong site with:\n\n**Username:** `' + username + '`\n**Password:** `' + password + '`\n\nLogging in activates your account on one device. New device? **Reset password** (every ' + RESET_COOLDOWN_DAYS + ' days).';
-  try { await i.user.send(body); await i.reply({ content: '\u2705 Done \u2014 your username is `' + username + '`. Sent to your DMs.', ephemeral: true }); }
-  catch (e) { await i.reply({ content: body + '\n\n*(Couldn\u2019t DM you \u2014 shown privately. Turn on DMs.)*', ephemeral: true }); }
+  try { await i.user.send(body); await i.reply({ content: '\u2705 Done - your username is `' + username + '`. Sent to your DMs.', ephemeral: true }); }
+  catch (e) { await i.reply({ content: body + '\n\n*(Couldn\u2019t DM you - shown privately. Turn on DMs.)*', ephemeral: true }); }
 }
 
 /* ----- admin control panel ----- */
 function adminPanel() {
   const emb = new EmbedBuilder()
     .setColor(ACCENT)
-    .setAuthor({ name: 'EVERLONG Â· ADMIN' })
+    .setAuthor({ name: 'EVERLONG | ADMIN' })
     .setThumbnail(SITE_ICON)
     .setTitle('Control Panel')
     .setDescription('Everything you need, one tap away.')
     .addFields(
-      { name: 'ð¤ Members', value: 'Whitelist Â· Ban Â· Unban Â· Cooldown Â· Force-unlock', inline: false },
-      { name: 'ðï¸ Accounts', value: 'Perm account Â· Lookup Â· Wipe Â· Stats Â· Logins', inline: false },
-      { name: 'ð£ Content', value: 'Announce Â· Set channel Â· Access / Ticket / Suggestion panels', inline: false },
-      { name: 'ð ï¸ Channel', value: 'Lock Â· Unlock Â· Slowmode Â· Purge', inline: false }
+      { name: 'ð¤ Members', value: 'Whitelist | Ban | Unban | Cooldown | Force-unlock', inline: false },
+      { name: 'ð Accounts', value: 'Perm account | Lookup | Wipe | Stats | Logins', inline: false },
+      { name: 'ð£ Content', value: 'Announce | Set channel | Access / Ticket / Suggestion panels', inline: false },
+      { name: 'ð§ Channel', value: 'Lock | Unlock | Slowmode | Purge', inline: false }
     )
     .setFooter({ text: 'Administrators only' });
   const row1 = new ActionRowBuilder().addComponents(
@@ -178,7 +179,7 @@ function channelPicker(id, ph) { return new ActionRowBuilder().addComponents(new
 function suggestPanel() {
   return {
     embeds: [new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG' }).setTitle('Suggestions')
-      .setDescription('Got an idea? Submit it below \u2014 everyone can vote with \uD83D\uDC4D / \uD83D\uDC4E.')],
+      .setDescription('Got an idea? Submit it below - everyone can vote with \uD83D\uDC4D / \uD83D\uDC4E.')],
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('sug_open').setLabel('Make a suggestion').setEmoji('\uD83D\uDCA1').setStyle(ButtonStyle.Primary))]
   };
@@ -188,7 +189,7 @@ function suggestionMessage(id, username, text, up, down) {
   return {
     embeds: [new EmbedBuilder().setColor(ACCENT).setAuthor({ name: '\uD83D\uDCA1 Suggestion' }).setDescription(text)
       .addFields({ name: 'Score', value: '\uD83D\uDC4D ' + up + '\u2003\uD83D\uDC4E ' + down + '\u2003(' + (score >= 0 ? '+' : '') + score + ')' })
-      .setFooter({ text: '#' + id + ' \u00b7 by ' + username })],
+      .setFooter({ text: '#' + id + ' | by ' + username })],
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('sugv:up:' + id).setLabel(String(up)).setEmoji('\uD83D\uDC4D').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('sugv:down:' + id).setLabel(String(down)).setEmoji('\uD83D\uDC4E').setStyle(ButtonStyle.Danger))]
@@ -232,22 +233,22 @@ async function postAnnouncement(msg, author) {
   if (!chId) return 'saved to the website (no announcement channel set)';
   try {
     const ch = await client.channels.fetch(chId);
-    await ch.send({ embeds: [new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG \u00b7 Update' }).setDescription(msg).setTimestamp(new Date())] });
+    await ch.send({ embeds: [new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG | Update' }).setDescription(msg).setTimestamp(new Date())] });
     return 'posted to <#' + chId + '> and the website';
-  } catch (e) { return 'saved to the website (couldn\u2019t post to the channel \u2014 check ID/permissions)'; }
+  } catch (e) { return 'saved to the website (couldn\u2019t post to the channel - check ID/permissions)'; }
 }
 
 async function adminStats(i) {
   const a = (await pool.query("SELECT count(*)::int total, count(*) filter (where session_token is not null)::int active, count(*) filter (where banned)::int banned, count(*) filter (where perm)::int perm FROM accounts")).rows[0];
   const today = (await pool.query("SELECT count(*) filter (where success)::int ok, count(*) filter (where not success)::int fail FROM login_log WHERE created_at > now() - interval '24 hours'")).rows[0];
   const sug = (await pool.query('SELECT count(*)::int c FROM suggestions')).rows[0];
-  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG \u00b7 STATS' }).setThumbnail(SITE_ICON).setTitle('At a glance')
+  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG | STATS' }).setThumbnail(SITE_ICON).setTitle('At a glance')
     .addFields(
       { name: '\uD83D\uDC65 Accounts', value: String(a.total), inline: true },
       { name: '\uD83D\uDFE2 Logged in now', value: String(a.active), inline: true },
-      { name: '\uD83D\uDDDD\uFE0F Permanent', value: String(a.perm), inline: true },
+      { name: '\uD83D\uDD11 Permanent', value: String(a.perm), inline: true },
       { name: '\uD83D\uDD28 Banned', value: String(a.banned), inline: true },
-      { name: '\uD83D\uDD11 Logins (24h)', value: today.ok + ' ok \u00b7 ' + today.fail + ' failed', inline: true },
+      { name: '\uD83D\uDD11 Logins (24h)', value: today.ok + ' ok | ' + today.fail + ' failed', inline: true },
       { name: '\uD83D\uDCA1 Suggestions', value: String(sug.c), inline: true }
     ).setTimestamp(new Date());
   return i.reply({ embeds: [emb], ephemeral: true });
@@ -256,8 +257,8 @@ async function adminStats(i) {
 async function adminLogins(i) {
   const r = await pool.query('SELECT username, ip, success, created_at FROM login_log ORDER BY created_at DESC LIMIT 10');
   if (!r.rowCount) return i.reply({ content: 'No login attempts logged yet.', ephemeral: true });
-  const lines = r.rows.map(x => (x.success ? '\u2705' : '\u274C') + ' `' + (x.username || '?') + '` \u2014 <t:' + Math.floor(new Date(x.created_at).getTime() / 1000) + ':R>');
-  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG \u00b7 RECENT LOGINS' }).setDescription(lines.join('\n')).setFooter({ text: 'Last 10 attempts' });
+  const lines = r.rows.map(x => (x.success ? '\u2705' : '\u274C') + ' `' + (x.username || '?') + '` - <t:' + Math.floor(new Date(x.created_at).getTime() / 1000) + ':R>');
+  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG | RECENT LOGINS' }).setDescription(lines.join('\n')).setFooter({ text: 'Last 10 attempts' });
   return i.reply({ embeds: [emb], ephemeral: true });
 }
 
@@ -300,7 +301,7 @@ client.on('interactionCreate', async (i) => {
         case 'adm_lookup':
           return i.reply({ content: 'Pick a member to **look up**:', components: [userPicker('adm_pick_lookup', 'Member')], ephemeral: true });
         case 'adm_wipe':
-          return i.reply({ content: '\u26A0\uFE0F Pick a member whose account you want to **permanently delete**:', components: [userPicker('adm_pick_wipe', 'Member to wipe')], ephemeral: true });
+          return i.reply({ content: 'Pick a member whose account you want to **permanently delete**:', components: [userPicker('adm_pick_wipe', 'Member to wipe')], ephemeral: true });
         case 'adm_perm':
           return i.showModal(new ModalBuilder().setCustomId('adm_perm_modal').setTitle('Create a permanent account').addComponents(
             new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('u').setLabel('Username').setStyle(TextInputStyle.Short).setRequired(true).setMinLength(3).setMaxLength(20).setPlaceholder('e.g. owner')),
@@ -326,7 +327,7 @@ client.on('interactionCreate', async (i) => {
       if (i.customId === 'adm_pick_whitelist') {
         const m = await i.guild.members.fetch(uid).catch(() => null);
         if (!m) return i.update({ content: 'That user isn\u2019t in this server.', components: [] });
-        try { await m.roles.add(WHITELIST_ROLE_ID); } catch (e) { return i.update({ content: 'Couldn\u2019t add the role \u2014 my role must be **above** Whitelisted and I need **Manage Roles**.', components: [] }); }
+        try { await m.roles.add(WHITELIST_ROLE_ID); } catch (e) { return i.update({ content: 'Couldn\u2019t add the role - my role must be **above** Whitelisted and I need **Manage Roles**.', components: [] }); }
         return i.update({ content: '\u2705 Whitelisted <@' + uid + '>.', components: [] });
       }
       if (i.customId === 'adm_pick_ban') {
@@ -334,9 +335,9 @@ client.on('interactionCreate', async (i) => {
         if (uid === client.user.id) return i.update({ content: 'I can\u2019t ban myself.', components: [] });
         const m = await i.guild.members.fetch(uid).catch(() => null);
         if (m && (m.permissions.has(PermissionFlagsBits.ManageGuild) || m.permissions.has(PermissionFlagsBits.Administrator)))
-          return i.update({ content: 'That user is staff \u2014 I won\u2019t ban them.', components: [] });
+          return i.update({ content: 'That user is staff - I won\u2019t ban them.', components: [] });
         const notes = await doBan(i.guild, uid, 'Banned via admin panel');
-        return i.update({ content: '\uD83D\uDD28 <@' + uid + '>: ' + notes.join(' \u00b7 ') + '.', components: [] });
+        return i.update({ content: '\uD83D\uDD28 <@' + uid + '>: ' + notes.join(' | ') + '.', components: [] });
       }
       if (i.customId === 'adm_pick_cooldown') {
         const r = await pool.query("UPDATE accounts SET last_reset_at = now() - ($1 || ' days')::interval WHERE discord_id=$2 RETURNING username", [String(RESET_COOLDOWN_DAYS + 1), uid]);
@@ -352,10 +353,10 @@ client.on('interactionCreate', async (i) => {
         const r = await pool.query('SELECT username, banned, perm, session_token, created_at, last_login_at, last_reset_at FROM accounts WHERE discord_id=$1', [uid]);
         if (!r.rowCount) return i.update({ content: 'No account for <@' + uid + '> yet.', components: [] });
         const a = r.rows[0];
-        const fmt = (d) => d ? '<t:' + Math.floor(new Date(d).getTime() / 1000) + ':R>' : '\u2014';
+        const fmt = (d) => d ? '<t:' + Math.floor(new Date(d).getTime() / 1000) + ':R>' : '-';
         const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'Account lookup' }).setTitle(a.username)
           .addFields(
-            { name: 'Type', value: a.perm ? '\uD83D\uDDDD\uFE0F Permanent' : 'Standard', inline: true },
+            { name: 'Type', value: a.perm ? '\uD83D\uDD11 Permanent' : 'Standard', inline: true },
             { name: 'Status', value: a.banned ? '\uD83D\uDD28 Banned' : '\u2705 Active', inline: true },
             { name: 'Logged in now', value: a.session_token ? 'Yes' : 'No', inline: true },
             { name: 'Created', value: fmt(a.created_at), inline: true },
@@ -367,7 +368,7 @@ client.on('interactionCreate', async (i) => {
       if (i.customId === 'adm_pick_wipe') {
         const r = await pool.query('DELETE FROM accounts WHERE discord_id=$1 RETURNING username', [uid]);
         if (!r.rowCount) return i.update({ content: 'That user has no account to wipe.', components: [] });
-        return i.update({ content: '\uD83D\uDDD1\uFE0F Deleted the account `' + r.rows[0].username + '` for <@' + uid + '>. They can create a fresh one.', components: [] });
+        return i.update({ content: '\uD83D\uDDD1 Deleted the account `' + r.rows[0].username + '` for <@' + uid + '>. They can create a fresh one.', components: [] });
       }
       return;
     }
@@ -381,11 +382,11 @@ client.on('interactionCreate', async (i) => {
       if (!ch) return i.update({ content: 'Couldn\u2019t find that channel.', components: [] });
       if (i.customId === 'adm_pick_lock') {
         try { await lockChannel(ch, true); return i.update({ content: '\uD83D\uDD12 <#' + cid + '> is now **view + react only** (no messages, no threads).', components: [] }); }
-        catch (e) { return i.update({ content: 'Couldn\u2019t lock it \u2014 I need **Manage Channels** on that channel.', components: [] }); }
+        catch (e) { return i.update({ content: 'Couldn\u2019t lock it - I need **Manage Channels** on that channel.', components: [] }); }
       }
       if (i.customId === 'adm_pick_unlock') {
         try { await lockChannel(ch, false); return i.update({ content: '\uD83D\uDD13 <#' + cid + '> unlocked.', components: [] }); }
-        catch (e) { return i.update({ content: 'Couldn\u2019t unlock it \u2014 I need **Manage Channels** on that channel.', components: [] }); }
+        catch (e) { return i.update({ content: 'Couldn\u2019t unlock it - I need **Manage Channels** on that channel.', components: [] }); }
       }
       return;
     }
@@ -409,7 +410,7 @@ client.on('interactionCreate', async (i) => {
           const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('el_ticket_close').setLabel('Close ticket').setEmoji('\uD83D\uDD12').setStyle(ButtonStyle.Danger));
           await ch.send({ content: '<@' + i.user.id + '>', embeds: [new EmbedBuilder().setColor(ACCENT).setTitle('\uD83D\uDED2 Purchase ticket').setDescription('Thanks for your interest! A team member will be with you shortly. Tell us what you\u2019re after.')], components: [row] });
           return i.reply({ content: '\u2705 Ticket opened: <#' + ch.id + '>', ephemeral: true });
-        } catch (e) { console.error('ticket create', e); return i.reply({ content: 'Couldn\u2019t open a ticket \u2014 I need **Manage Channels**.', ephemeral: true }); }
+        } catch (e) { console.error('ticket create', e); return i.reply({ content: 'Couldn\u2019t open a ticket - I need **Manage Channels**.', ephemeral: true }); }
       }
       if (i.customId === 'el_ticket_close') {
         const isOwner = i.channel.topic === 'ticket:' + i.user.id;
@@ -495,29 +496,29 @@ client.on('interactionCreate', async (i) => {
         if (!/^\d{5,25}$/.test(uid)) return i.reply({ content: 'That doesn\u2019t look like a valid user ID.', ephemeral: true });
         await pool.query('UPDATE accounts SET banned=false WHERE discord_id=$1', [uid]);
         let note = 'site eligibility restored';
-        try { await i.guild.bans.remove(uid); note += ' \u00b7 unbanned from server'; } catch (e) { note += ' \u00b7 (was not server-banned)'; }
+        try { await i.guild.bans.remove(uid); note += ' | unbanned from server'; } catch (e) { note += ' | (was not server-banned)'; }
         return i.reply({ content: '\u2705 <@' + uid + '>: ' + note + '.', ephemeral: true });
       }
       // admin: create permanent account
       if (i.customId === 'adm_perm_modal') {
         if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
-        const u = i.fields.getTextInputValue('u').trim();
+        const u = i.fields.getTextInputValue('u').trim().toLowerCase();
         const p = i.fields.getTextInputValue('p');
-        if (!/^[a-zA-Z0-9_]{3,20}$/.test(u)) return i.reply({ content: 'Username must be 3\u201320 chars: letters, numbers, underscores.', ephemeral: true });
+        if (!/^[a-z0-9_]{3,20}$/.test(u)) return i.reply({ content: 'Username must be 3\u201320 chars: letters, numbers, underscores.', ephemeral: true });
         const bad = pwError(p); if (bad) return i.reply({ content: bad, ephemeral: true });
-        const taken = (await pool.query('SELECT 1 FROM accounts WHERE lower(username)=lower($1)', [u])).rowCount;
-        if (taken) return i.reply({ content: 'That username is already taken \u2014 pick another.', ephemeral: true });
+        const taken = (await pool.query('SELECT 1 FROM accounts WHERE lower(username)=$1', [u])).rowCount;
+        if (taken) return i.reply({ content: 'That username is already taken - pick another.', ephemeral: true });
         const hash = await bcrypt.hash(p, 10);
         const did = 'perm-' + crypto.randomBytes(8).toString('hex');
         await pool.query('INSERT INTO accounts(discord_id, username, password_hash, session_token, last_reset_at, perm) VALUES ($1,$2,$3,NULL,now(),true)', [did, u, hash]);
-        const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG \u00b7 PERMANENT ACCOUNT' }).setThumbnail(SITE_ICON)
+        const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG | PERMANENT ACCOUNT' }).setThumbnail(SITE_ICON)
           .setTitle('Account ready')
-          .setDescription('Log in and out as much as you want \u2014 **no single-use lock, no cooldown**, multiple devices fine.')
+          .setDescription('Log in and out as much as you want - **no single-use lock, no cooldown**, multiple devices fine.')
           .addFields(
             { name: 'Username', value: '`' + u + '`', inline: true },
             { name: 'Password', value: '`' + p + '`', inline: true },
             { name: 'Login', value: 'everlongsguide.netlify.app', inline: false }
-          ).setFooter({ text: 'Save these \u2014 shown once here.' });
+          ).setFooter({ text: 'Save these - shown once here. Username is lowercase.' });
         return i.reply({ embeds: [emb], ephemeral: true });
       }
       // admin: slowmode (this channel)
@@ -526,7 +527,7 @@ client.on('interactionCreate', async (i) => {
         let s = parseInt(i.fields.getTextInputValue('s').trim(), 10);
         if (!Number.isFinite(s) || s < 0 || s > 21600) return i.reply({ content: 'Enter a number of seconds between 0 and 21600.', ephemeral: true });
         try { await i.channel.setRateLimitPerUser(s); }
-        catch (e) { return i.reply({ content: 'Couldn\u2019t set slowmode \u2014 I need **Manage Channels** here.', ephemeral: true }); }
+        catch (e) { return i.reply({ content: 'Couldn\u2019t set slowmode - I need **Manage Channels** here.', ephemeral: true }); }
         return i.reply({ content: s === 0 ? '\u2705 Slowmode turned off in this channel.' : '\u2705 Slowmode set to **' + s + 's** in this channel.', ephemeral: true });
       }
       // admin: purge (this channel)
@@ -537,13 +538,13 @@ client.on('interactionCreate', async (i) => {
         try {
           const del = await i.channel.bulkDelete(n, true);
           return i.reply({ content: '\uD83E\uDDF9 Deleted **' + del.size + '** message(s). (Messages older than 14 days can\u2019t be bulk-deleted.)', ephemeral: true });
-        } catch (e) { return i.reply({ content: 'Couldn\u2019t purge \u2014 I need **Manage Messages** here.', ephemeral: true }); }
+        } catch (e) { return i.reply({ content: 'Couldn\u2019t purge - I need **Manage Messages** here.', ephemeral: true }); }
       }
       // member: create / reset
       if (i.customId === 'el_create_modal' || i.customId === 'el_reset_modal') {
         if (!hasWhitelist(i.member)) return i.reply({ content: 'You need the **Whitelisted** role.', ephemeral: true });
         const pw = i.fields.getTextInputValue('pw'), pw2 = i.fields.getTextInputValue('pw2');
-        if (pw !== pw2) return i.reply({ content: 'Those passwords didn\u2019t match \u2014 try the button again.', ephemeral: true });
+        if (pw !== pw2) return i.reply({ content: 'Those passwords didn\u2019t match - try the button again.', ephemeral: true });
         const bad = pwError(pw); if (bad) return i.reply({ content: bad, ephemeral: true });
         const did = i.user.id;
         const row = (await pool.query('SELECT * FROM accounts WHERE discord_id=$1', [did])).rows[0];
@@ -566,7 +567,7 @@ client.on('interactionCreate', async (i) => {
     }
   } catch (err) {
     console.error('interaction error', err);
-    if (i.isRepliable()) { try { await i.reply({ content: 'Something went wrong \u2014 try again.', ephemeral: true }); } catch (_) {} }
+    if (i.isRepliable()) { try { await i.reply({ content: 'Something went wrong - try again.', ephemeral: true }); } catch (_) {} }
   }
 });
 
@@ -589,11 +590,11 @@ app.get('/api/announcements', async (req, res) => {
 });
 app.post('/api/login', async (req, res) => {
   const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'x').toString();
-  if (rateLimited(ip)) return res.status(429).json({ error: 'Too many attempts â wait a minute.' });
+  if (rateLimited(ip)) return res.status(429).json({ error: 'Too many attempts - wait a minute.' });
   const username = (req.body && req.body.username || '').toString().toLowerCase().trim();
   const password = (req.body && req.body.password || '').toString();
   if (!username || !password) return res.status(400).json({ error: 'Enter a username and password.' });
-  const r = await pool.query('SELECT * FROM accounts WHERE username=$1', [username]);
+  const r = await pool.query('SELECT * FROM accounts WHERE lower(username)=$1', [username]);
   const row = r.rows[0];
   const success = !!(row && !row.banned && await (async () => { if (!row) return false; return await bcrypt.compare(password, row.password_hash); })());
   await pool.query('INSERT INTO login_log(discord_id, username, ip, success) VALUES($1,$2,$3,$4)', [row ? row.discord_id : null, username, ip, success]).catch(() => {});
