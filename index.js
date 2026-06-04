@@ -1,4 +1,3 @@
-
 /* Everlong access bot + login API
  * One Railway service: Discord bot (buyer access, admin panel, tickets) + Express login API.
  * Storage: Postgres (Railway "Add Postgres" sets DATABASE_URL).
@@ -14,7 +13,7 @@ const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits,
   ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType,
-  UserSelectMenuBuilder, ChannelSelectMenuBuilder
+  UserSelectMenuBuilder, ChannelSelectMenuBuilder, StringSelectMenuBuilder
 } = require('discord.js');
 
 const {
@@ -135,45 +134,81 @@ function adminPanel() {
     .setAuthor({ name: 'EVERLONG | ADMIN' })
     .setThumbnail(SITE_ICON)
     .setTitle('Control Panel')
-    .setDescription('Everything you need, one tap away.')
+    .setDescription('Tap a tool. Everything is admin-only.')
     .addFields(
-      { name: 'ð¤ Members', value: 'Whitelist | Ban | Unban | Cooldown | Force-unlock', inline: false },
-      { name: 'ð Accounts', value: 'Perm account | Lookup | Wipe | Stats | Logins', inline: false },
-      { name: 'ð£ Content', value: 'Announce | Set channel | Access / Ticket / Suggestion panels', inline: false },
-      { name: 'ð§ Channel', value: 'Lock | Unlock | Slowmode | Purge', inline: false }
+      { name: '\uD83D\uDD11 Site access', value: 'Whitelist | Unwhitelist | Force-unlock | Cooldown | Perm account', inline: false },
+      { name: '\uD83D\uDCC2 Accounts', value: 'Lookup | Wipe | Stats | Logins | Set channel', inline: false },
+      { name: '\u26D4 Moderation', value: 'Ban | Unban | Kick | Timeout | Untimeout', inline: false },
+      { name: '\uD83D\uDD27 Channel', value: 'Lock | Unlock | Slowmode | Purge | Say', inline: false },
+      { name: '\uD83D\uDCE3 Content', value: 'Announce | Sale link | Access / Ticket / Suggestion panels', inline: false }
     )
     .setFooter({ text: 'Administrators only' });
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setEmoji('\u2705').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setEmoji('\uD83D\uDD28').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_unban').setLabel('Unban').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_unwhitelist').setLabel('Unwhitelist').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_forceunlock').setLabel('Force-unlock').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_cooldown').setLabel('Cooldown').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_forceunlock').setLabel('Force-unlock').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_perm').setLabel('Perm account').setEmoji('\uD83D\uDD11').setStyle(ButtonStyle.Primary)
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_perm').setLabel('Perm account').setEmoji('\uD83D\uDD11').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('adm_lookup').setLabel('Lookup').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_wipe').setLabel('Wipe').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId('adm_stats').setLabel('Stats').setEmoji('\uD83D\uDCCA').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_logins').setLabel('Logins').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_logins').setLabel('Logins').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_setchannel').setLabel('Set channel').setStyle(ButtonStyle.Secondary)
   );
   const row3 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setEmoji('\uD83D\uDCE3').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('adm_setchannel').setLabel('Set channel').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postaccess').setLabel('Access panel').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Ticket panel').setEmoji('\uD83D\uDED2').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Suggestions').setEmoji('\uD83D\uDCA1').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setEmoji('\uD83D\uDD28').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('adm_unban').setLabel('Unban').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_kick').setLabel('Kick').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('adm_timeout').setLabel('Timeout').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_untimeout').setLabel('Untimeout').setStyle(ButtonStyle.Secondary)
   );
   const row4 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setEmoji('\uD83D\uDD12').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setEmoji('\uD83D\uDD13').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('adm_slowmode').setLabel('Slowmode').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_purge').setLabel('Purge').setEmoji('\uD83E\uDDF9').setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId('adm_purge').setLabel('Purge').setEmoji('\uD83E\uDDF9').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('adm_say').setLabel('Say').setStyle(ButtonStyle.Secondary)
   );
-  return { embeds: [emb], components: [row1, row2, row3, row4] };
+  const row5 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setEmoji('\uD83D\uDCE3').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('adm_sale').setLabel('Sale link').setEmoji('\uD83D\uDCB8').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('adm_postaccess').setLabel('Access panel').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Ticket panel').setEmoji('\uD83D\uDED2').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Suggestions').setEmoji('\uD83D\uDCA1').setStyle(ButtonStyle.Secondary)
+  );
+  return { embeds: [emb], components: [row1, row2, row3, row4, row5] };
 }
 function userPicker(id, ph) { return new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).setMinValues(1).setMaxValues(1)); }
 function channelPicker(id, ph) { return new ActionRowBuilder().addComponents(new ChannelSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).addChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)); }
+function timeoutDurations(uid) {
+  return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('adm_timeout_dur:' + uid).setPlaceholder('Choose a duration').addOptions(
+    { label: '60 seconds', value: '1' },
+    { label: '5 minutes', value: '5' },
+    { label: '10 minutes', value: '10' },
+    { label: '1 hour', value: '60' },
+    { label: '1 day', value: '1440' },
+    { label: '1 week', value: '10080' }
+  ));
+}
+function salePost() {
+  const emb = new EmbedBuilder()
+    .setColor(ACCENT)
+    .setAuthor({ name: 'EVERLONG' })
+    .setThumbnail(SITE_ICON)
+    .setTitle('Become your best self.')
+    .setDescription('Everlong is the complete system - looksmaxxing, training, skin, diet and routine - in one private members site.\n\nTap below to see the program and get access.')
+    .addFields(
+      { name: 'What you get', value: 'The full guide | routine builder | targets & body-comp tools | progress photos | ongoing updates', inline: false }
+    )
+    .setFooter({ text: 'everlongsguide.netlify.app/join' });
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel('View the program').setEmoji('\uD83D\uDD17').setStyle(ButtonStyle.Link).setURL('https://everlongsguide.netlify.app/join'),
+    new ButtonBuilder().setLabel('Member login').setStyle(ButtonStyle.Link).setURL('https://everlongsguide.netlify.app/')
+  );
+  return { embeds: [emb], components: [row] };
+}
 
 /* ----- suggestions board ----- */
 function suggestPanel() {
@@ -316,6 +351,20 @@ client.on('interactionCreate', async (i) => {
         case 'adm_purge':
           return i.showModal(new ModalBuilder().setCustomId('adm_purge_modal').setTitle('Purge messages (this channel)').addComponents(
             new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('n').setLabel('How many messages to delete?').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(3).setPlaceholder('1 - 100'))));
+        case 'adm_unwhitelist':
+          return i.reply({ content: 'Pick a member to **remove** the Whitelisted role from:', components: [userPicker('adm_pick_unwhitelist', 'Member to unwhitelist')], ephemeral: true });
+        case 'adm_kick':
+          return i.reply({ content: 'Pick a member to **kick** from the server:', components: [userPicker('adm_pick_kick', 'Member to kick')], ephemeral: true });
+        case 'adm_timeout':
+          return i.reply({ content: 'Pick a member to **time out** (mute):', components: [userPicker('adm_pick_timeout', 'Member to timeout')], ephemeral: true });
+        case 'adm_untimeout':
+          return i.reply({ content: 'Pick a member to **remove timeout** from:', components: [userPicker('adm_pick_untimeout', 'Member')], ephemeral: true });
+        case 'adm_say':
+          return i.showModal(new ModalBuilder().setCustomId('adm_say_modal').setTitle('Say something (this channel)').addComponents(
+            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('m').setLabel('Message to post as the bot').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1800).setPlaceholder('Type your message...'))));
+        case 'adm_sale':
+          await i.channel.send(salePost());
+          return i.reply({ content: '\u2705 Sale post sent here.', ephemeral: true });
       }
       return;
     }
@@ -370,6 +419,32 @@ client.on('interactionCreate', async (i) => {
         if (!r.rowCount) return i.update({ content: 'That user has no account to wipe.', components: [] });
         return i.update({ content: '\uD83D\uDDD1 Deleted the account `' + r.rows[0].username + '` for <@' + uid + '>. They can create a fresh one.', components: [] });
       }
+      if (i.customId === 'adm_pick_unwhitelist') {
+        const m = await i.guild.members.fetch(uid).catch(() => null);
+        if (!m) return i.update({ content: 'That user isn\u2019t in this server.', components: [] });
+        try { await m.roles.remove(WHITELIST_ROLE_ID); } catch (e) { return i.update({ content: 'Couldn\u2019t remove the role - my role must be above Whitelisted and I need Manage Roles.', components: [] }); }
+        return i.update({ content: '\u2705 Removed Whitelisted from <@' + uid + '>.', components: [] });
+      }
+      if (i.customId === 'adm_pick_kick') {
+        if (uid === i.user.id) return i.update({ content: 'You can\u2019t kick yourself.', components: [] });
+        if (uid === client.user.id) return i.update({ content: 'I can\u2019t kick myself.', components: [] });
+        const m = await i.guild.members.fetch(uid).catch(() => null);
+        if (!m) return i.update({ content: 'That user isn\u2019t in this server.', components: [] });
+        if (m.permissions.has(PermissionFlagsBits.ManageGuild) || m.permissions.has(PermissionFlagsBits.Administrator))
+          return i.update({ content: 'That user is staff - I won\u2019t kick them.', components: [] });
+        try { await m.kick('Kicked via admin panel'); } catch (e) { return i.update({ content: 'Couldn\u2019t kick - I need Kick Members and my role above theirs.', components: [] }); }
+        return i.update({ content: '\uD83D\uDC62 Kicked <@' + uid + '>.', components: [] });
+      }
+      if (i.customId === 'adm_pick_timeout') {
+        if (uid === i.user.id || uid === client.user.id) return i.update({ content: 'Pick someone else.', components: [] });
+        return i.update({ content: 'How long should <@' + uid + '> be timed out?', components: [timeoutDurations(uid)] });
+      }
+      if (i.customId === 'adm_pick_untimeout') {
+        const m = await i.guild.members.fetch(uid).catch(() => null);
+        if (!m) return i.update({ content: 'That user isn\u2019t in this server.', components: [] });
+        try { await m.timeout(null); } catch (e) { return i.update({ content: 'Couldn\u2019t lift it - I need Moderate Members.', components: [] }); }
+        return i.update({ content: '\u2705 Timeout removed from <@' + uid + '>.', components: [] });
+      }
       return;
     }
 
@@ -389,6 +464,21 @@ client.on('interactionCreate', async (i) => {
         catch (e) { return i.update({ content: 'Couldn\u2019t unlock it - I need **Manage Channels** on that channel.', components: [] }); }
       }
       return;
+    }
+
+    /* ===== admin string-select menus ===== */
+    if (i.isStringSelectMenu() && i.customId.startsWith('adm_timeout_dur:')) {
+      if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+      const uid = i.customId.split(':')[1];
+      const mins = parseInt(i.values[0], 10);
+      const m = await i.guild.members.fetch(uid).catch(() => null);
+      if (!m) return i.update({ content: 'That user isn\u2019t in this server.', components: [] });
+      if (m.permissions.has(PermissionFlagsBits.ManageGuild) || m.permissions.has(PermissionFlagsBits.Administrator))
+        return i.update({ content: 'That user is staff - I won\u2019t time them out.', components: [] });
+      try { await m.timeout(mins * 60000, 'Timed out via admin panel'); }
+      catch (e) { return i.update({ content: 'Couldn\u2019t time them out - I need Moderate Members and my role above theirs.', components: [] }); }
+      const label = mins >= 1440 ? (mins / 1440) + ' day(s)' : mins >= 60 ? (mins / 60) + ' hour(s)' : mins + ' minute(s)';
+      return i.update({ content: '\u2705 <@' + uid + '> timed out for ' + label + '.', components: [] });
     }
 
     /* ===== member buttons ===== */
@@ -539,6 +629,14 @@ client.on('interactionCreate', async (i) => {
           const del = await i.channel.bulkDelete(n, true);
           return i.reply({ content: '\uD83E\uDDF9 Deleted **' + del.size + '** message(s). (Messages older than 14 days can\u2019t be bulk-deleted.)', ephemeral: true });
         } catch (e) { return i.reply({ content: 'Couldn\u2019t purge - I need **Manage Messages** here.', ephemeral: true }); }
+      }
+      // admin: say (post as the bot in this channel)
+      if (i.customId === 'adm_say_modal') {
+        if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+        const m = i.fields.getTextInputValue('m');
+        try { await i.channel.send({ content: m, allowedMentions: { parse: [] } }); }
+        catch (e) { return i.reply({ content: 'Couldn\u2019t post - I need Send Messages here.', ephemeral: true }); }
+        return i.reply({ content: '\u2705 Posted.', ephemeral: true });
       }
       // member: create / reset
       if (i.customId === 'el_create_modal' || i.customId === 'el_reset_modal') {
