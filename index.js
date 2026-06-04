@@ -25,6 +25,7 @@ const RESET_COOLDOWN_DAYS = Number(process.env.RESET_COOLDOWN_DAYS || 4);
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID || '';
 const DAY = 86400000;
 const ACCENT = 0xCDD2DB;
+const ADMIN_COLOR = 0x4C6EF5;
 
 for (const k of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','WHITELIST_ROLE_ID','JWT_SECRET','DATABASE_URL']) {
   if (!process.env[k]) console.warn('[warn] missing env var: ' + k);
@@ -70,9 +71,11 @@ function pwError(pw) { if (!pw || pw.length < 8) return 'Password must be at lea
 /* ---------------- Discord client ---------------- */
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-/* one admin command only - everything else is buttons */
+/* admin slash commands - everything else is buttons */
 const commands = [
   new SlashCommandBuilder().setName('adminpanel').setDescription('Open the Everlong admin control panel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('livetracker').setDescription('Post a live, self-updating tracker (members online + accounts)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(c => c.toJSON());
 
@@ -130,7 +133,7 @@ async function dmCreds(i, username, password, title) {
 /* ----- admin control panel ----- */
 function adminPanel() {
   const emb = new EmbedBuilder()
-    .setColor(ACCENT)
+    .setColor(ADMIN_COLOR)
     .setAuthor({ name: 'EVERLONG | ADMIN' })
     .setThumbnail(SITE_ICON)
     .setTitle('Control Panel')
@@ -194,10 +197,10 @@ function timeoutDurations(uid) {
 }
 function salePost() {
   const emb = new EmbedBuilder()
-    .setColor(ACCENT)
+    .setColor(0xE6B325)
     .setAuthor({ name: 'EVERLONG' })
     .setThumbnail(SITE_ICON)
-    .setTitle('Become your best self.')
+    .setTitle('Be yourself, or be someone better.')
     .setDescription('Everlong is the complete system - looksmaxxing, training, skin, diet and routine - in one private members site.\n\nTap below to see the program and get access.')
     .addFields(
       { name: 'What you get', value: 'The full guide | routine builder | targets & body-comp tools | progress photos | ongoing updates', inline: false }
@@ -277,7 +280,7 @@ async function adminStats(i) {
   const a = (await pool.query("SELECT count(*)::int total, count(*) filter (where session_token is not null)::int active, count(*) filter (where banned)::int banned, count(*) filter (where perm)::int perm FROM accounts")).rows[0];
   const today = (await pool.query("SELECT count(*) filter (where success)::int ok, count(*) filter (where not success)::int fail FROM login_log WHERE created_at > now() - interval '24 hours'")).rows[0];
   const sug = (await pool.query('SELECT count(*)::int c FROM suggestions')).rows[0];
-  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG | STATS' }).setThumbnail(SITE_ICON).setTitle('At a glance')
+  const emb = new EmbedBuilder().setColor(ADMIN_COLOR).setAuthor({ name: 'EVERLONG | STATS' }).setThumbnail(SITE_ICON).setTitle('At a glance')
     .addFields(
       { name: '\uD83D\uDC65 Accounts', value: String(a.total), inline: true },
       { name: '\uD83D\uDFE2 Logged in now', value: String(a.active), inline: true },
@@ -293,8 +296,56 @@ async function adminLogins(i) {
   const r = await pool.query('SELECT username, ip, success, created_at FROM login_log ORDER BY created_at DESC LIMIT 10');
   if (!r.rowCount) return i.reply({ content: 'No login attempts logged yet.', ephemeral: true });
   const lines = r.rows.map(x => (x.success ? '\u2705' : '\u274C') + ' `' + (x.username || '?') + '` - <t:' + Math.floor(new Date(x.created_at).getTime() / 1000) + ':R>');
-  const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG | RECENT LOGINS' }).setDescription(lines.join('\n')).setFooter({ text: 'Last 10 attempts' });
+  const emb = new EmbedBuilder().setColor(ADMIN_COLOR).setAuthor({ name: 'EVERLONG | RECENT LOGINS' }).setDescription(lines.join('\n')).setFooter({ text: 'Last 10 attempts' });
   return i.reply({ embeds: [emb], ephemeral: true });
+}
+
+/* ----- live tracker (self-updating embed) ----- */
+async function buildTrackerEmbed() {
+  let online = 0, members = 0;
+  try {
+    const g = await client.guilds.fetch({ guild: GUILD_ID, withCounts: true });
+    online = g.approximatePresenceCount || 0;
+    members = g.approximateMemberCount || 0;
+  } catch (e) {}
+  let accounts = 0, today = 0;
+  try {
+    accounts = (await pool.query('SELECT count(*)::int c FROM accounts')).rows[0].c;
+    today = (await pool.query("SELECT count(*)::int c FROM accounts WHERE created_at > now() - interval '24 hours'")).rows[0].c;
+  } catch (e) {}
+  return new EmbedBuilder()
+    .setColor(0x2ECC71)
+    .setAuthor({ name: 'EVERLONG | LIVE' })
+    .setThumbnail(SITE_ICON)
+    .setTitle('Live tracker')
+    .addFields(
+      { name: '\uD83D\uDFE2 Members online', value: '**' + online + '**', inline: true },
+      { name: '\uD83D\uDC65 Total members', value: '**' + members + '**', inline: true },
+      { name: '\uD83D\uDD11 Accounts created', value: '**' + accounts + '**', inline: true },
+      { name: '\uD83C\uDD95 New today', value: '**' + today + '**', inline: true }
+    )
+    .setFooter({ text: 'Updates every minute' })
+    .setTimestamp(new Date());
+}
+
+async function updateTracker() {
+  let chId, msgId;
+  try { chId = await getSetting('tracker_channel_id', null); msgId = await getSetting('tracker_message_id', null); } catch (e) { return; }
+  if (!chId || !msgId) return;
+  try {
+    const ch = await client.channels.fetch(chId);
+    const msg = await ch.messages.fetch(msgId);
+    await msg.edit({ embeds: [await buildTrackerEmbed()] });
+  } catch (e) {
+    // message/channel gone - stop tracking so we don't spam errors
+    try { await setSetting('tracker_message_id', ''); } catch (_) {}
+  }
+}
+
+let trackerTimer = null;
+function startTrackerLoop() {
+  if (trackerTimer) return;
+  trackerTimer = setInterval(() => { updateTracker().catch(() => {}); }, 60000);
 }
 
 /* ---------------- Interactions ---------------- */
@@ -304,6 +355,15 @@ client.on('interactionCreate', async (i) => {
     if (i.isChatInputCommand() && i.commandName === 'adminpanel') {
       if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
       return i.reply(Object.assign({ ephemeral: true }, adminPanel()));
+    }
+    if (i.isChatInputCommand() && i.commandName === 'livetracker') {
+      if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+      await i.reply({ content: 'Posting the live tracker here...', ephemeral: true });
+      const msg = await i.channel.send({ embeds: [await buildTrackerEmbed()] });
+      await setSetting('tracker_channel_id', i.channel.id);
+      await setSetting('tracker_message_id', msg.id);
+      startTrackerLoop();
+      return i.editReply({ content: '\u2705 Live tracker posted - it refreshes every minute. Delete that message to stop it.' });
     }
 
     /* ===== admin buttons ===== */
@@ -403,7 +463,7 @@ client.on('interactionCreate', async (i) => {
         if (!r.rowCount) return i.update({ content: 'No account for <@' + uid + '> yet.', components: [] });
         const a = r.rows[0];
         const fmt = (d) => d ? '<t:' + Math.floor(new Date(d).getTime() / 1000) + ':R>' : '-';
-        const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'Account lookup' }).setTitle(a.username)
+        const emb = new EmbedBuilder().setColor(ADMIN_COLOR).setAuthor({ name: 'Account lookup' }).setTitle(a.username)
           .addFields(
             { name: 'Type', value: a.perm ? '\uD83D\uDD11 Permanent' : 'Standard', inline: true },
             { name: 'Status', value: a.banned ? '\uD83D\uDD28 Banned' : '\u2705 Active', inline: true },
@@ -601,7 +661,7 @@ client.on('interactionCreate', async (i) => {
         const hash = await bcrypt.hash(p, 10);
         const did = 'perm-' + crypto.randomBytes(8).toString('hex');
         await pool.query('INSERT INTO accounts(discord_id, username, password_hash, session_token, last_reset_at, perm) VALUES ($1,$2,$3,NULL,now(),true)', [did, u, hash]);
-        const emb = new EmbedBuilder().setColor(ACCENT).setAuthor({ name: 'EVERLONG | PERMANENT ACCOUNT' }).setThumbnail(SITE_ICON)
+        const emb = new EmbedBuilder().setColor(ADMIN_COLOR).setAuthor({ name: 'EVERLONG | PERMANENT ACCOUNT' }).setThumbnail(SITE_ICON)
           .setTitle('Account ready')
           .setDescription('Log in and out as much as you want - **no single-use lock, no cooldown**, multiple devices fine.')
           .addFields(
@@ -724,4 +784,5 @@ app.get('/api/verify', async (req, res) => {
   app.listen(PORT, () => console.log('Login API listening on ' + PORT));
   await client.login(DISCORD_TOKEN);
   await registerCommands();
+  startTrackerLoop();
 })().catch((e) => { console.error('fatal boot error', e); process.exit(1); });
