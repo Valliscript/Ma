@@ -23,6 +23,7 @@ const {
 const PORT = process.env.PORT || 3000;
 const RESET_COOLDOWN_DAYS = Number(process.env.RESET_COOLDOWN_DAYS || 4);
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID || '';
+const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID || '1511747348450119720';
 const DAY = 86400000;
 const ACCENT = 0xCDD2DB;
 const ADMIN_COLOR = 0x0A0B0D;
@@ -69,7 +70,7 @@ function isAdmin(i) { return i.memberPermissions && i.memberPermissions.has(Perm
 function pwError(pw) { if (!pw || pw.length < 8) return 'Password must be at least 8 characters.'; if (pw.length > 64) return 'Password is too long (max 64).'; return null; }
 
 /* ---------------- Discord client ---------------- */
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
 /* admin slash commands - everything else is buttons */
 const commands = [
@@ -96,9 +97,9 @@ function accessEmbed() {
     .setTitle('Your key to the system')
     .setDescription('Purchased access? Set up your private login below.\n\n> Requires the **Whitelisted** role - granted after purchase.')
     .addFields(
-      { name: 'ð Create', value: 'Set your password & get your login.', inline: true },
-      { name: 'ð Reset', value: 'New device | every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
-      { name: 'ð Status', value: 'Check your account.', inline: true }
+      { name: '🔑 Create', value: 'Set your password & get your login.', inline: true },
+      { name: '🔄 Reset', value: 'New device | every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
+      { name: '🔍 Status', value: 'Check your account.', inline: true }
     )
     .setFooter({ text: 'everlongsguide.netlify.app | your password is shown once' });
 }
@@ -307,11 +308,16 @@ async function adminLogins(i) {
 
 /* ----- live tracker (self-updating embed) ----- */
 async function buildTrackerEmbed() {
-  let online = 0, members = 0;
+  let online = 0, members = 0, whitelisted = 0;
   try {
     const g = await client.guilds.fetch({ guild: GUILD_ID, withCounts: true });
     online = g.approximatePresenceCount || 0;
     members = g.approximateMemberCount || 0;
+  } catch (e) {}
+  try {
+    const guild = await client.guilds.fetch(GUILD_ID);
+    const all = await guild.members.fetch();
+    whitelisted = all.filter(m => m.roles.cache.has(WHITELIST_ROLE_ID)).size;
   } catch (e) {}
   let accounts = 0, today = 0;
   try {
@@ -324,8 +330,9 @@ async function buildTrackerEmbed() {
     .setThumbnail(SITE_ICON)
     .setTitle('Live tracker')
     .addFields(
+      { name: '\uD83D\uDC65 Total Discord members', value: '**' + members + '**', inline: true },
       { name: '\uD83D\uDFE2 Members online', value: '**' + online + '**', inline: true },
-      { name: '\uD83D\uDC65 Total members', value: '**' + members + '**', inline: true },
+      { name: '\u2705 Whitelisted members', value: '**' + whitelisted + '**', inline: true },
       { name: '\uD83D\uDD11 Accounts created', value: '**' + accounts + '**', inline: true },
       { name: '\uD83C\uDD95 New today', value: '**' + today + '**', inline: true }
     )
@@ -732,6 +739,31 @@ client.on('interactionCreate', async (i) => {
     console.error('interaction error', err);
     if (i.isRepliable()) { try { await i.reply({ content: 'Something went wrong - try again.', ephemeral: true }); } catch (_) {} }
   }
+});
+
+/* ----- welcomer: greet new members ----- */
+client.on('guildMemberAdd', async (member) => {
+  try {
+    if (member.user && member.user.bot) return;                 // welcome people, not bots
+    if (GUILD_ID && member.guild.id !== GUILD_ID) return;        // only the Everlong server
+    const chId = await getSetting('welcome_channel_id', WELCOME_CHANNEL_ID);
+    if (!chId) return;
+    const ch = await client.channels.fetch(chId).catch(() => null);
+    if (!ch) return;
+    const emb = new EmbedBuilder()
+      .setColor(ACCENT)
+      .setAuthor({ name: 'EVERLONG' })
+      .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
+      .setTitle('Welcome to Everlong')
+      .setDescription('You made it.\n\n> *Be yourself, or be someone better.*\n\nBought access? Open the member access panel to set up your private login. Just here to look? Start with the program below.')
+      .setFooter({ text: 'Member #' + member.guild.memberCount + ' \u2022 everlongsguide.netlify.app' })
+      .setTimestamp(new Date());
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setLabel('View the program').setEmoji('\uD83D\uDD17').setStyle(ButtonStyle.Link).setURL('https://everlongsguide.netlify.app/join'),
+      new ButtonBuilder().setLabel('Member login').setStyle(ButtonStyle.Link).setURL('https://everlongsguide.netlify.app/')
+    );
+    await ch.send({ content: '<@' + member.id + '>', embeds: [emb], components: [row] });
+  } catch (e) { console.error('welcome error', e); }
 });
 
 client.once('ready', () => console.log('Discord bot online as ' + client.user.tag));
