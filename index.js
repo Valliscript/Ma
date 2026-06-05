@@ -77,7 +77,10 @@ const commands = [
   new SlashCommandBuilder().setName('adminpanel').setDescription('Open the Everlong admin control panel')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('livetracker').setDescription('Post a live, self-updating tracker (members online + accounts)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('setwelcome').setDescription('Choose the channel where new members are welcomed')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addChannelOption(o => o.setName('channel').setDescription('Channel for welcome messages').addChannelTypes(ChannelType.GuildText).setRequired(true))
 ].map(c => c.toJSON());
 
 async function registerCommands() {
@@ -376,6 +379,12 @@ client.on('interactionCreate', async (i) => {
       await setSetting('tracker_message_id', msg.id);
       startTrackerLoop();
       return i.editReply({ content: '\u2705 Live tracker posted - it refreshes every minute. Delete that message to stop it.' });
+    }
+    if (i.isChatInputCommand() && i.commandName === 'setwelcome') {
+      if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+      const ch = i.options.getChannel('channel');
+      await setSetting('welcome_channel_id', ch.id);
+      return i.reply({ content: '\u2705 New members will now be welcomed in <#' + ch.id + '>.', ephemeral: true });
     }
 
     /* ===== admin buttons ===== */
