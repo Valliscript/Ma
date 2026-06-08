@@ -44,6 +44,7 @@ async function initDb() {
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS banned BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS perm BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS protocol BOOLEAN DEFAULT false`);
   await pool.query(`CREATE TABLE IF NOT EXISTS login_log(
     id SERIAL PRIMARY KEY, discord_id TEXT, username TEXT, ip TEXT, success BOOLEAN, created_at TIMESTAMPTZ DEFAULT now())`);
   await pool.query(`CREATE TABLE IF NOT EXISTS announcements(
@@ -78,7 +79,9 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('livetracker').setDescription('Post a live, self-updating tracker (members online + accounts)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('protocol').setDescription('Open the Everlong Protocol Builder â personalised peptide & SARM guide')
+  new SlashCommandBuilder().setName('protocol').setDescription('Grant a member access to the Protocol Builder page (admin only)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(o => o.setName('username').setDescription('The site account username to enable').setRequired(true))
 ].map(c => c.toJSON());
 
 async function registerCommands() {
@@ -364,32 +367,22 @@ function startTrackerLoop() {
 /* ---------------- Interactions ---------------- */
 client.on('interactionCreate', async (i) => {
   try {
-    /* ===== /protocol ===== */
+    /* ===== /protocol â admin grants page access to an account ===== */
     if (i.isChatInputCommand() && i.commandName === 'protocol') {
-      const member = await i.guild.members.fetch(i.user.id).catch(() => null);
-      if (!member || (!hasWhitelist(member) && !isAdmin(i))) {
-        return i.reply({ content: 'The Protocol Builder is for **Whitelisted members** only. Get access from the Discord panel.', ephemeral: true });
+      if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+      const uname = i.options.getString('username').toLowerCase().trim();
+      const r = await pool.query('UPDATE accounts SET protocol=true WHERE lower(username)=$1 RETURNING username, protocol', [uname]);
+      if (!r.rowCount) {
+        return i.reply({ content: '\\u26a0\\ufe0f No account found with username `' + uname + '`. Check the spelling (usernames are lowercase, no spaces).', ephemeral: true });
       }
       const emb = new EmbedBuilder()
         .setColor(0x0A0B0D)
-        .setAuthor({ name: 'EVERLONG | PROTOCOL BUILDER' })
+        .setAuthor({ name: 'EVERLONG | PROTOCOL ACCESS' })
         .setThumbnail(SITE_ICON)
-        .setTitle('Personalised Peptide & SARM Protocol')
-        .setDescription('Select your goals, load your body stats, and get a personalised protocol with correct dosing â built around your numbers.\n\n> Includes dosing log, cycle structure, ancillaries, and what to monitor.')
-        .addFields(
-          { name: '\uD83E\uDDB4 Bone & structure', value: 'IGF-1 DES, PTH analogs, bonesmashing support', inline: true },
-          { name: '\uD83D\uDCAA Muscle & fat', value: 'SARMs, peptide stacks, metabolic support', inline: true },
-          { name: '\u2728 Skin & recovery', value: 'GHK-Cu, BPC-157, TB-500, collagen stack', inline: true }
-        )
-        .setFooter({ text: 'everlongsguide.netlify.app/protocol Â· Members only' });
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setLabel('Open Protocol Builder')
-          .setEmoji('\uD83E\uDDEC')
-          .setStyle(ButtonStyle.Link)
-          .setURL('https://everlongsguide.netlify.app/protocol')
-      );
-      return i.reply({ embeds: [emb], components: [row], ephemeral: true });
+        .setTitle('Protocol Builder unlocked')
+        .setDescription('`' + r.rows[0].username + '` now has permanent access to the **Protocol Builder** page in the guide.\\n\\nThey will see it after their next login (or page refresh).')
+        .setFooter({ text: 'everlongsguide.netlify.app/protocol' });
+      return i.reply({ embeds: [emb], ephemeral: true });
     }
 
     /* ===== /adminpanel ===== */
@@ -500,7 +493,7 @@ client.on('interactionCreate', async (i) => {
         return i.update({ content: '\uD83D\uDD13 Session cleared for <@' + uid + '> (`' + r.rows[0].username + '`). They can log in again right now.', components: [] });
       }
       if (i.customId === 'adm_pick_lookup') {
-        const r = await pool.query('SELECT username, banned, perm, session_token, created_at, last_login_at, last_reset_at FROM accounts WHERE discord_id=$1', [uid]);
+        const r = await pool.query('SELECT username, banned, perm, protocol, session_token, created_at, last_login_at, last_reset_at FROM accounts WHERE discord_id=$1', [uid]);
         if (!r.rowCount) return i.update({ content: 'No account for <@' + uid + '> yet.', components: [] });
         const a = r.rows[0];
         const fmt = (d) => d ? '<t:' + Math.floor(new Date(d).getTime() / 1000) + ':R>' : '-';
@@ -511,7 +504,7 @@ client.on('interactionCreate', async (i) => {
             { name: 'Logged in now', value: a.session_token ? 'Yes' : 'No', inline: true },
             { name: 'Created', value: fmt(a.created_at), inline: true },
             { name: 'Last login', value: fmt(a.last_login_at), inline: true },
-            { name: 'Last reset', value: fmt(a.last_reset_at), inline: true }
+            { name: 'Protocol page', value: a.protocol ? '\uD83E\uDDEC Enabled' : 'Locked', inline: true }
           ).setFooter({ text: 'User ID ' + uid });
         return i.update({ content: '', embeds: [emb], components: [] });
       }
@@ -829,18 +822,18 @@ app.post('/api/login', async (req, res) => {
   if (row.session_token && !row.perm) return res.status(409).json({ error: 'This account is already in use. Reset it in the Everlong Discord to log in again.' });
   const sid = crypto.randomBytes(16).toString('hex');
   await pool.query('UPDATE accounts SET session_token=$1, last_login_at=now() WHERE discord_id=$2', [sid, row.discord_id]);
-  const token = jwt.sign({ sub: row.discord_id, u: row.username, st: sid }, JWT_SECRET, { expiresIn: '60d' });
-  res.json({ token, username: row.username });
+  const token = jwt.sign({ sub: row.discord_id, u: row.username, st: sid, protocol: !!row.protocol }, JWT_SECRET, { expiresIn: '60d' });
+  res.json({ token, username: row.username, protocol: !!row.protocol });
 });
 app.get('/api/verify', async (req, res) => {
   const auth = (req.headers.authorization || '').replace('Bearer ', '');
   let payload;
   try { payload = jwt.verify(auth, JWT_SECRET); } catch (e) { return res.status(401).json({ ok: false, error: 'expired' }); }
   try {
-    const r = await pool.query('SELECT session_token, username, banned, perm FROM accounts WHERE discord_id=$1', [payload.sub]);
+    const r = await pool.query('SELECT session_token, username, banned, perm, protocol FROM accounts WHERE discord_id=$1', [payload.sub]);
     if (!r.rowCount || r.rows[0].banned) return res.status(401).json({ ok: false, error: 'revoked' });
     if (!r.rows[0].perm && r.rows[0].session_token !== payload.st) return res.status(401).json({ ok: false, error: 'revoked' });
-    res.json({ ok: true, username: r.rows[0].username });
+    res.json({ ok: true, username: r.rows[0].username, protocol: !!r.rows[0].protocol });
   } catch (e) { console.error('verify error', e); res.status(500).json({ ok: false }); }
 });
 
