@@ -637,6 +637,7 @@ client.on('interactionCreate', async (i) => {
           'Username: **' + row.username + '**',
           'Status: ' + (row.banned ? '\u26d4 banned' : (row.session_token ? '\uD83D\uDFE2 active on a device' : '\u26aa not logged in yet')),
           'Last login: ' + (row.last_login_at ? '<t:' + Math.floor(new Date(row.last_login_at).getTime() / 1000) + ':R>' : 'never'),
+          'Protocol: ' + (row.protocol ? '\uD83E\uDDEC enabled' : 'locked'),
           'Reset available: ' + (Date.now() >= nextTs ? '**now**' : '<t:' + Math.floor(nextTs / 1000) + ':R>')
         ].join('\n'), ephemeral: true });
       }
