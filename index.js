@@ -78,9 +78,7 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('livetracker').setDescription('Post a live, self-updating tracker (members online + accounts)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('setwelcome').setDescription('Choose the channel where new members are welcomed')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addChannelOption(o => o.setName('channel').setDescription('Channel for welcome messages').addChannelTypes(ChannelType.GuildText).setRequired(true))
+  new SlashCommandBuilder().setName('protocol').setDescription('Open the Everlong Protocol Builder â personalised peptide & SARM guide')
 ].map(c => c.toJSON());
 
 async function registerCommands() {
@@ -100,9 +98,9 @@ function accessEmbed() {
     .setTitle('Your key to the system')
     .setDescription('Purchased access? Set up your private login below.\n\n> Requires the **Whitelisted** role - granted after purchase.')
     .addFields(
-      { name: '🔑 Create', value: 'Set your password & get your login.', inline: true },
-      { name: '🔄 Reset', value: 'New device | every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
-      { name: '🔍 Status', value: 'Check your account.', inline: true }
+      { name: 'ð Create', value: 'Set your password & get your login.', inline: true },
+      { name: 'ð Reset', value: 'New device | every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
+      { name: 'ð Status', value: 'Check your account.', inline: true }
     )
     .setFooter({ text: 'everlongsguide.netlify.app | your password is shown once' });
 }
@@ -366,6 +364,34 @@ function startTrackerLoop() {
 /* ---------------- Interactions ---------------- */
 client.on('interactionCreate', async (i) => {
   try {
+    /* ===== /protocol ===== */
+    if (i.isChatInputCommand() && i.commandName === 'protocol') {
+      const member = await i.guild.members.fetch(i.user.id).catch(() => null);
+      if (!member || (!hasWhitelist(member) && !isAdmin(i))) {
+        return i.reply({ content: 'The Protocol Builder is for **Whitelisted members** only. Get access from the Discord panel.', ephemeral: true });
+      }
+      const emb = new EmbedBuilder()
+        .setColor(0x0A0B0D)
+        .setAuthor({ name: 'EVERLONG | PROTOCOL BUILDER' })
+        .setThumbnail(SITE_ICON)
+        .setTitle('Personalised Peptide & SARM Protocol')
+        .setDescription('Select your goals, load your body stats, and get a personalised protocol with correct dosing â built around your numbers.\n\n> Includes dosing log, cycle structure, ancillaries, and what to monitor.')
+        .addFields(
+          { name: '\uD83E\uDDB4 Bone & structure', value: 'IGF-1 DES, PTH analogs, bonesmashing support', inline: true },
+          { name: '\uD83D\uDCAA Muscle & fat', value: 'SARMs, peptide stacks, metabolic support', inline: true },
+          { name: '\u2728 Skin & recovery', value: 'GHK-Cu, BPC-157, TB-500, collagen stack', inline: true }
+        )
+        .setFooter({ text: 'everlongsguide.netlify.app/protocol Â· Members only' });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('Open Protocol Builder')
+          .setEmoji('\uD83E\uDDEC')
+          .setStyle(ButtonStyle.Link)
+          .setURL('https://everlongsguide.netlify.app/protocol')
+      );
+      return i.reply({ embeds: [emb], components: [row], ephemeral: true });
+    }
+
     /* ===== /adminpanel ===== */
     if (i.isChatInputCommand() && i.commandName === 'adminpanel') {
       if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
@@ -379,12 +405,6 @@ client.on('interactionCreate', async (i) => {
       await setSetting('tracker_message_id', msg.id);
       startTrackerLoop();
       return i.editReply({ content: '\u2705 Live tracker posted - it refreshes every minute. Delete that message to stop it.' });
-    }
-    if (i.isChatInputCommand() && i.commandName === 'setwelcome') {
-      if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
-      const ch = i.options.getChannel('channel');
-      await setSetting('welcome_channel_id', ch.id);
-      return i.reply({ content: '\u2705 New members will now be welcomed in <#' + ch.id + '>.', ephemeral: true });
     }
 
     /* ===== admin buttons ===== */
