@@ -144,11 +144,11 @@ async function dmCreds(i, username, password, title) {
 
 /* ----- admin control panel ----- */
 const PANEL_SECTIONS = {
-  access:  { label: 'Site Access', emoji: '\uD83D\uDFE2', color: 0x1f7a4d, blurb: 'Whitelist, locks, cooldowns and protocol/permanent access.' },
-  accounts:{ label: 'Accounts',    emoji: '\uD83D\uDC64', color: 0x4a5560, blurb: 'Look up, manage and audit member site accounts.' },
-  mod:     { label: 'Moderation',  emoji: '\uD83D\uDD34', color: 0xb0413e, blurb: 'Ban, kick, timeout and reverse each of them.' },
-  channel: { label: 'Channel',     emoji: '\uD83D\uDD35', color: 0x3b6fb0, blurb: 'Lock, slow, purge and speak in the current channel.' },
-  content: { label: 'Content',     emoji: '\u2728',      color: 0x1f7a4d, blurb: 'Announcements, sale link and the public panels.' }
+  access:  { label: 'Access',     emoji: '\uD83D\uDD11', color: 0x1f7a4d, blurb: 'Whitelist, locks, cooldowns and protocol / permanent access.' },
+  accounts:{ label: 'Accounts',   emoji: '\uD83D\uDC64', color: 0x4a5560, blurb: 'Look up, audit and manage member site accounts.' },
+  mod:     { label: 'Moderation', emoji: '\uD83D\uDEA8', color: 0xb0413e, blurb: 'Ban, kick, timeout \u2014 and reverse each one.' },
+  channel: { label: 'Channel',    emoji: '\uD83D\uDCDF', color: 0x3b6fb0, blurb: 'Lock, slowmode, purge and speak in this channel.' },
+  content: { label: 'Content',    emoji: '\uD83D\uDCE3', color: 0x1f7a4d, blurb: 'Announcements, sale link and the public panels.' }
 };
 
 function btn(id, label, style) { return new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style); }
@@ -169,42 +169,53 @@ function panelTabs(active) {
 // command buttons for each section (each enable has its disable)
 function panelButtons(section) {
   const G = ButtonStyle.Success, S = ButtonStyle.Secondary, D = ButtonStyle.Danger, P = ButtonStyle.Primary;
+  // icon helper — escaped unicode, single codepoint, no variation selectors
+  function ib(id, label, style, emoji) {
+    const b = new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
+    if (emoji) b.setEmoji(emoji);
+    return b;
+  }
   const rows = [];
   if (section === 'access') {
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_whitelist', 'Whitelist', G), btn('adm_unwhitelist', 'Unwhitelist', S),
-      btn('adm_perm', 'Make permanent', G), btn('adm_unperm', 'Remove permanent', S)));
+      ib('adm_whitelist', 'Whitelist', G, '\u2795'), ib('adm_unwhitelist', 'Unwhitelist', S, '\u2796')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_protocol_on', 'Protocol on', G), btn('adm_protocol_off', 'Protocol off', S),
-      btn('adm_forceunlock', 'Force-unlock', G), btn('adm_relock', 'Re-lock', S)));
+      ib('adm_perm', 'Make permanent', G, '\u2795'), ib('adm_unperm', 'Remove permanent', S, '\u2796')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_cooldown', 'Set cooldown', S), btn('adm_clearcooldown', 'Clear cooldown', G)));
+      ib('adm_protocol_on', 'Protocol on', G, '\u2795'), ib('adm_protocol_off', 'Protocol off', S, '\u2796')));
+    rows.push(new ActionRowBuilder().addComponents(
+      ib('adm_forceunlock', 'Force-unlock', G, '\uD83D\uDD13'), ib('adm_relock', 'Re-lock', S, '\uD83D\uDD12'),
+      ib('adm_cooldown', 'Set cooldown', S, '\u23F3'), ib('adm_clearcooldown', 'Clear cooldown', G, '\u2705')));
   } else if (section === 'accounts') {
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_lookup', 'Lookup', S), btn('adm_stats', 'Stats', S), btn('adm_logins', 'Recent logins', S)));
+      ib('adm_lookup', 'Lookup', P, '\uD83D\uDD0D'), ib('adm_stats', 'Stats', S, '\uD83D\uDCCA')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_inactive', 'Inactive list', S), btn('adm_export', 'Export CSV', S), btn('adm_setchannel', 'Set channel', S)));
+      ib('adm_logins', 'Recent logins', S, '\uD83D\uDD11'), ib('adm_inactive', 'Inactive list', S, '\uD83D\uDCA4')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_wipe', 'Wipe account', D)));
+      ib('adm_export', 'Export CSV', S, '\uD83D\uDCC4'), ib('adm_setchannel', 'Set channel', S, '\uD83D\uDCCC')));
+    rows.push(new ActionRowBuilder().addComponents(
+      ib('adm_wipe', 'Wipe account', D, '\uD83D\uDDD1')));
   } else if (section === 'mod') {
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_ban', 'Ban', D), btn('adm_unban', 'Unban', S)));
+      ib('adm_ban', 'Ban', D, '\uD83D\uDD28'), ib('adm_unban', 'Unban', S, '\uD83D\uDD01')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_kick', 'Kick', D)));
+      ib('adm_timeout', 'Timeout', D, '\uD83D\uDD07'), ib('adm_untimeout', 'Untimeout', S, '\uD83D\uDD01')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_timeout', 'Timeout', D), btn('adm_untimeout', 'Untimeout', S)));
+      ib('adm_kick', 'Kick', D, '\uD83D\uDC62')));
   } else if (section === 'channel') {
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_lock', 'Lock', P), btn('adm_unlock', 'Unlock', S)));
+      ib('adm_lock', 'Lock', P, '\uD83D\uDD12'), ib('adm_unlock', 'Unlock', S, '\uD83D\uDD13')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_slowmode', 'Slowmode on', P), btn('adm_slowmode_off', 'Slowmode off', S)));
+      ib('adm_slowmode', 'Slowmode on', P, '\uD83D\uDC0C'), ib('adm_slowmode_off', 'Slowmode off', S, '\u26A1')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_purge', 'Purge', D), btn('adm_say', 'Say', P)));
+      ib('adm_say', 'Say', P, '\uD83D\uDCAC'), ib('adm_purge', 'Purge', D, '\uD83E\uDDF9')));
   } else if (section === 'content') {
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_announce', 'Announce', G), btn('adm_sale', 'Sale link', G)));
+      ib('adm_announce', 'Announce', G, '\uD83D\uDCE2'), ib('adm_sale', 'Sale link', G, '\uD83D\uDCB0')));
     rows.push(new ActionRowBuilder().addComponents(
-      btn('adm_postaccess', 'Access panel', S), btn('adm_postticket', 'Ticket panel', S), btn('adm_postsuggest', 'Suggestion panel', S)));
+      ib('adm_postaccess', 'Access panel', S, '\uD83D\uDD11'), ib('adm_postticket', 'Ticket panel', S, '\uD83C\uDFAB')));
+    rows.push(new ActionRowBuilder().addComponents(
+      ib('adm_postsuggest', 'Suggestion panel', S, '\uD83D\uDCA1')));
   }
   return rows;
 }
