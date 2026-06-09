@@ -1,4 +1,4 @@
-* Everlong access bot + login API
+/* Everlong access bot + login API
  * One Railway service: Discord bot (buyer access, admin panel, tickets) + Express login API.
  * Storage: Postgres (Railway "Add Postgres" sets DATABASE_URL).
  */
