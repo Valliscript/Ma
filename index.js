@@ -1,3 +1,4 @@
+
 /* Everlong access bot + login API
  * One Railway service: Discord bot (buyer access, admin panel, tickets) + Express login API.
  * Storage: Postgres (Railway "Add Postgres" sets DATABASE_URL).
@@ -13,7 +14,7 @@ const {
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits,
   ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType,
-  UserSelectMenuBuilder, ChannelSelectMenuBuilder, StringSelectMenuBuilder
+  UserSelectMenuBuilder, ChannelSelectMenuBuilder, StringSelectMenuBuilder, AttachmentBuilder
 } = require('discord.js');
 
 const {
@@ -79,9 +80,15 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('livetracker').setDescription('Post a live, self-updating tracker (members online + accounts)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('protocol').setDescription('Grant a member access to the Protocol Builder page (admin only)')
+  new SlashCommandBuilder().setName('protocol').setDescription('Enable or disable Protocol Builder access for an account (admin only)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(o => o.setName('username').setDescription('The site account username to enable').setRequired(true))
+    .addSubcommand(sc => sc.setName('on').setDescription('Enable the Protocol page for an account')
+      .addStringOption(o => o.setName('username').setDescription('The site account username').setRequired(true)))
+    .addSubcommand(sc => sc.setName('off').setDescription('Disable the Protocol page for an account')
+      .addStringOption(o => o.setName('username').setDescription('The site account username').setRequired(true))),
+  new SlashCommandBuilder().setName('whoami').setDescription('Show your own Everlong account status'),
+  new SlashCommandBuilder().setName('status').setDescription('Check that the bot, login API and database are running (admin only)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(c => c.toJSON());
 
 async function registerCommands() {
@@ -101,9 +108,9 @@ function accessEmbed() {
     .setTitle('Your key to the system')
     .setDescription('Purchased access? Set up your private login below.\n\n> Requires the **Whitelisted** role - granted after purchase.')
     .addFields(
-      { name: 'ð Create', value: 'Set your password & get your login.', inline: true },
-      { name: 'ð Reset', value: 'New device | every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
-      { name: 'ð Status', value: 'Check your account.', inline: true }
+      { name: '🔑 Create', value: 'Set your password & get your login.', inline: true },
+      { name: '🔄 Reset', value: 'New device | every ' + RESET_COOLDOWN_DAYS + 'd.', inline: true },
+      { name: '🔍 Status', value: 'Check your account.', inline: true }
     )
     .setFooter({ text: 'everlongsguide.netlify.app | your password is shown once' });
 }
@@ -136,62 +143,83 @@ async function dmCreds(i, username, password, title) {
 }
 
 /* ----- admin control panel ----- */
-function adminPanel() {
+const PANEL_SECTIONS = {
+  access:  { label: 'Site Access', emoji: '\uD83D\uDFE2', color: 0x1f7a4d, blurb: 'Whitelist, locks, cooldowns and protocol/permanent access.' },
+  accounts:{ label: 'Accounts',    emoji: '\uD83D\uDC64', color: 0x4a5560, blurb: 'Look up, manage and audit member site accounts.' },
+  mod:     { label: 'Moderation',  emoji: '\uD83D\uDD34', color: 0xb0413e, blurb: 'Ban, kick, timeout and reverse each of them.' },
+  channel: { label: 'Channel',     emoji: '\uD83D\uDD35', color: 0x3b6fb0, blurb: 'Lock, slow, purge and speak in the current channel.' },
+  content: { label: 'Content',     emoji: '\u2728',      color: 0x1f7a4d, blurb: 'Announcements, sale link and the public panels.' }
+};
+
+function btn(id, label, style) { return new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style); }
+
+// tab row — one button per section, the active one highlighted (Primary)
+function panelTabs(active) {
+  const row = new ActionRowBuilder();
+  Object.keys(PANEL_SECTIONS).forEach(function (k) {
+    const s = PANEL_SECTIONS[k];
+    row.addComponents(
+      new ButtonBuilder().setCustomId('adm_tab:' + k).setLabel(s.label).setEmoji(s.emoji)
+        .setStyle(k === active ? ButtonStyle.Primary : ButtonStyle.Secondary)
+    );
+  });
+  return row;
+}
+
+// command buttons for each section (each enable has its disable)
+function panelButtons(section) {
+  const G = ButtonStyle.Success, S = ButtonStyle.Secondary, D = ButtonStyle.Danger, P = ButtonStyle.Primary;
+  const rows = [];
+  if (section === 'access') {
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_whitelist', 'Whitelist', G), btn('adm_unwhitelist', 'Unwhitelist', S),
+      btn('adm_perm', 'Make permanent', G), btn('adm_unperm', 'Remove permanent', S)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_protocol_on', 'Protocol on', G), btn('adm_protocol_off', 'Protocol off', S),
+      btn('adm_forceunlock', 'Force-unlock', G), btn('adm_relock', 'Re-lock', S)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_cooldown', 'Set cooldown', S), btn('adm_clearcooldown', 'Clear cooldown', G)));
+  } else if (section === 'accounts') {
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_lookup', 'Lookup', S), btn('adm_stats', 'Stats', S), btn('adm_logins', 'Recent logins', S)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_inactive', 'Inactive list', S), btn('adm_export', 'Export CSV', S), btn('adm_setchannel', 'Set channel', S)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_wipe', 'Wipe account', D)));
+  } else if (section === 'mod') {
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_ban', 'Ban', D), btn('adm_unban', 'Unban', S)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_kick', 'Kick', D)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_timeout', 'Timeout', D), btn('adm_untimeout', 'Untimeout', S)));
+  } else if (section === 'channel') {
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_lock', 'Lock', P), btn('adm_unlock', 'Unlock', S)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_slowmode', 'Slowmode on', P), btn('adm_slowmode_off', 'Slowmode off', S)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_purge', 'Purge', D), btn('adm_say', 'Say', P)));
+  } else if (section === 'content') {
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_announce', 'Announce', G), btn('adm_sale', 'Sale link', G)));
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('adm_postaccess', 'Access panel', S), btn('adm_postticket', 'Ticket panel', S), btn('adm_postsuggest', 'Suggestion panel', S)));
+  }
+  return rows;
+}
+
+function adminPanel(section) {
+  section = section || 'access';
+  const meta = PANEL_SECTIONS[section];
   const emb = new EmbedBuilder()
-    .setColor(ADMIN_COLOR)
-    .setAuthor({ name: 'EVERLONG | ADMIN' })
+    .setColor(meta.color)
+    .setAuthor({ name: 'EVERLONG | ADMIN CONTROL PANEL' })
     .setThumbnail(SITE_ICON)
-    .setTitle('Control Panel')
-    .setDescription('Buttons are colour-coded by section:')
-    .addFields(
-      { name: '\uD83D\uDFE2 Site access', value: 'Whitelist | Unwhitelist | Force-unlock | Cooldown | Perm account', inline: false },
-      { name: '\u26AA Accounts', value: 'Lookup | Wipe | Stats | Logins | Set channel', inline: false },
-      { name: '\uD83D\uDD34 Moderation', value: 'Ban | Unban | Kick | Timeout | Untimeout', inline: false },
-      { name: '\uD83D\uDD35 Channel', value: 'Lock | Unlock | Slowmode | Purge | Say', inline: false },
-      { name: '\uD83D\uDFE2 Content', value: 'Announce | Sale link | Access / Ticket / Suggestion panels', inline: false }
-    )
-    .setFooter({ text: 'Administrators only' });
-  // Row 1 - Site access (green)
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_whitelist').setLabel('Whitelist').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_unwhitelist').setLabel('Unwhitelist').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_forceunlock').setLabel('Force-unlock').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_cooldown').setLabel('Cooldown').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_perm').setLabel('Perm account').setStyle(ButtonStyle.Success)
-  );
-  // Row 2 - Accounts (grey)
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_lookup').setLabel('Lookup').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_wipe').setLabel('Wipe').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_stats').setLabel('Stats').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_logins').setLabel('Logins').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('adm_setchannel').setLabel('Set channel').setStyle(ButtonStyle.Secondary)
-  );
-  // Row 3 - Moderation (red)
-  const row3 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_ban').setLabel('Ban').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_unban').setLabel('Unban').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_kick').setLabel('Kick').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_timeout').setLabel('Timeout').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('adm_untimeout').setLabel('Untimeout').setStyle(ButtonStyle.Danger)
-  );
-  // Row 4 - Channel (blurple)
-  const row4 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_lock').setLabel('Lock').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('adm_unlock').setLabel('Unlock').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('adm_slowmode').setLabel('Slowmode').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('adm_purge').setLabel('Purge').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('adm_say').setLabel('Say').setStyle(ButtonStyle.Primary)
-  );
-  // Row 5 - Content (green)
-  const row5 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('adm_announce').setLabel('Announce').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_sale').setLabel('Sale link').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_postaccess').setLabel('Access panel').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_postticket').setLabel('Ticket panel').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('adm_postsuggest').setLabel('Suggestions').setStyle(ButtonStyle.Success)
-  );
-  return { embeds: [emb], components: [row1, row2, row3, row4, row5] };
+    .setTitle(meta.emoji + '  ' + meta.label)
+    .setDescription(meta.blurb + '\n\nUse the tabs above to switch sections. Every action that turns something on has a matching off.')
+    .setFooter({ text: 'Administrators only \u00b7 ' + meta.label });
+  return { embeds: [emb], components: [panelTabs(section)].concat(panelButtons(section)) };
 }
 function userPicker(id, ph) { return new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).setMinValues(1).setMaxValues(1)); }
 function channelPicker(id, ph) { return new ActionRowBuilder().addComponents(new ChannelSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).addChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1)); }
@@ -310,6 +338,38 @@ async function adminLogins(i) {
   return i.reply({ embeds: [emb], ephemeral: true });
 }
 
+async function adminInactive(i) {
+  // accounts that have never logged in OR not in 14+ days
+  const r = await pool.query("SELECT username, last_login_at FROM accounts WHERE last_login_at IS NULL OR last_login_at < now() - interval '14 days' ORDER BY last_login_at ASC NULLS FIRST LIMIT 25");
+  if (!r.rowCount) return i.reply({ content: '\u2705 No inactive accounts \u2014 everyone logged in within the last 14 days.', ephemeral: true });
+  const lines = r.rows.map(function (x) {
+    return '\u2022 `' + x.username + '` \u2014 ' + (x.last_login_at ? 'last <t:' + Math.floor(new Date(x.last_login_at).getTime() / 1000) + ':R>' : 'never logged in');
+  });
+  const emb = new EmbedBuilder().setColor(ADMIN_COLOR).setAuthor({ name: 'EVERLONG | INACTIVE ACCOUNTS' })
+    .setTitle('Inactive 14+ days').setDescription(lines.join('\n')).setFooter({ text: 'Up to 25 shown, oldest first' });
+  return i.reply({ embeds: [emb], ephemeral: true });
+}
+
+async function adminExport(i) {
+  const r = await pool.query('SELECT username, perm, protocol, banned, session_token, created_at, last_login_at FROM accounts ORDER BY created_at ASC');
+  const head = 'username,type,protocol,banned,logged_in_now,created,last_login';
+  const rows = r.rows.map(function (a) {
+    return [
+      a.username,
+      a.perm ? 'permanent' : 'standard',
+      a.protocol ? 'yes' : 'no',
+      a.banned ? 'yes' : 'no',
+      a.session_token ? 'yes' : 'no',
+      a.created_at ? new Date(a.created_at).toISOString().slice(0, 10) : '',
+      a.last_login_at ? new Date(a.last_login_at).toISOString().slice(0, 10) : 'never'
+    ].join(',');
+  });
+  const csv = [head].concat(rows).join('\n');
+  const buf = Buffer.from(csv, 'utf8');
+  const file = new AttachmentBuilder(buf, { name: 'everlong-accounts.csv' });
+  return i.reply({ content: '\uD83D\uDCC4 ' + r.rowCount + ' accounts exported.', files: [file], ephemeral: true });
+}
+
 /* ----- live tracker (self-updating embed) ----- */
 async function buildTrackerEmbed() {
   let online = 0, members = 0, whitelisted = 0;
@@ -367,21 +427,55 @@ function startTrackerLoop() {
 /* ---------------- Interactions ---------------- */
 client.on('interactionCreate', async (i) => {
   try {
-    /* ===== /protocol â admin grants page access to an account ===== */
+    /* ===== /protocol — admin grants page access to an account ===== */
     if (i.isChatInputCommand() && i.commandName === 'protocol') {
       if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+      const sub = i.options.getSubcommand();
+      const on = sub === 'on';
       const uname = i.options.getString('username').toLowerCase().trim();
-      const r = await pool.query('UPDATE accounts SET protocol=true WHERE lower(username)=$1 RETURNING username, protocol', [uname]);
+      const r = await pool.query('UPDATE accounts SET protocol=$1 WHERE lower(username)=$2 RETURNING username', [on, uname]);
       if (!r.rowCount) {
-        return i.reply({ content: '\\u26a0\\ufe0f No account found with username `' + uname + '`. Check the spelling (usernames are lowercase, no spaces).', ephemeral: true });
+        return i.reply({ content: '\u26A0\uFE0F No account found with username `' + uname + '`. Usernames are lowercase, no spaces.', ephemeral: true });
       }
-      const emb = new EmbedBuilder()
-        .setColor(0x0A0B0D)
-        .setAuthor({ name: 'EVERLONG | PROTOCOL ACCESS' })
-        .setThumbnail(SITE_ICON)
-        .setTitle('Protocol Builder unlocked')
-        .setDescription('`' + r.rows[0].username + '` now has permanent access to the **Protocol Builder** page in the guide.\\n\\nThey will see it after their next login (or page refresh).')
-        .setFooter({ text: 'everlongsguide.netlify.app/protocol' });
+      return i.reply({
+        content: (on ? '\uD83E\uDDEC Protocol page **enabled**' : '\uD83D\uDD12 Protocol page **disabled**') +
+          ' for `' + r.rows[0].username + '`.' + (on ? ' Visible after their next refresh.' : ''),
+        ephemeral: true
+      });
+    }
+
+    if (i.isChatInputCommand() && i.commandName === 'whoami') {
+      const r = await pool.query('SELECT username, perm, protocol, banned, session_token, last_login_at FROM accounts WHERE discord_id=$1', [i.user.id]);
+      const member = await i.guild.members.fetch(i.user.id).catch(function () { return null; });
+      const wl = hasWhitelist(member);
+      if (!r.rowCount) {
+        return i.reply({ content: 'You don\u2019t have a site account yet. ' + (wl ? 'Use the **Create account** button in the access panel.' : 'Get whitelisted first, then create one.'), ephemeral: true });
+      }
+      const a = r.rows[0];
+      const emb = new EmbedBuilder().setColor(0x1f7a4d).setAuthor({ name: 'EVERLONG | YOUR ACCOUNT' })
+        .setThumbnail(i.user.displayAvatarURL()).setTitle(a.username)
+        .addFields(
+          { name: 'Type', value: a.perm ? '\uD83D\uDD11 Permanent' : '\uD83D\uDC64 Standard', inline: true },
+          { name: 'Whitelisted', value: wl ? '\u2705 Yes' : '\u274C No', inline: true },
+          { name: 'Protocol page', value: a.protocol ? '\uD83E\uDDEC Enabled' : '\uD83D\uDD12 Locked', inline: true },
+          { name: 'Logged in now', value: a.session_token ? '\uD83D\uDFE2 Yes' : '\u26AB No', inline: true },
+          { name: 'Last login', value: a.last_login_at ? '<t:' + Math.floor(new Date(a.last_login_at).getTime() / 1000) + ':R>' : '\u2014', inline: true }
+        ).setFooter({ text: a.banned ? 'This account is banned' : 'everlongsguide.netlify.app' });
+      return i.reply({ embeds: [emb], ephemeral: true });
+    }
+
+    if (i.isChatInputCommand() && i.commandName === 'status') {
+      if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+      let db = false, dbMs = 0;
+      const t0 = Date.now();
+      try { await pool.query('SELECT 1'); db = true; dbMs = Date.now() - t0; } catch (e) {}
+      const emb = new EmbedBuilder().setColor(db ? 0x1f7a4d : 0xb0413e).setAuthor({ name: 'EVERLONG | SYSTEM STATUS' })
+        .addFields(
+          { name: 'Bot', value: '\uD83D\uDFE2 Online', inline: true },
+          { name: 'Gateway ping', value: Math.max(0, Math.round(client.ws.ping)) + ' ms', inline: true },
+          { name: 'Database', value: db ? '\uD83D\uDFE2 OK (' + dbMs + ' ms)' : '\uD83D\uDD34 Unreachable', inline: true },
+          { name: 'Uptime', value: Math.floor(process.uptime() / 3600) + 'h ' + Math.floor((process.uptime() % 3600) / 60) + 'm', inline: true }
+        ).setTimestamp(new Date());
       return i.reply({ embeds: [emb], ephemeral: true });
     }
 
@@ -401,12 +495,18 @@ client.on('interactionCreate', async (i) => {
     }
 
     /* ===== admin buttons ===== */
+    if (i.isButton() && i.customId.startsWith('adm_tab:')) {
+      if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+      return i.update(adminPanel(i.customId.split(':')[1]));
+    }
+
     if (i.isButton() && i.customId.startsWith('adm_')) {
       if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
       switch (i.customId) {
         case 'adm_whitelist': return i.reply({ content: 'Pick a member to **whitelist**:', components: [userPicker('adm_pick_whitelist', 'Member to whitelist')], ephemeral: true });
         case 'adm_ban': return i.reply({ content: 'Pick a member to **ban** (also revokes site access):', components: [userPicker('adm_pick_ban', 'Member to ban')], ephemeral: true });
-        case 'adm_cooldown': return i.reply({ content: 'Pick a member to **clear reset cooldown**:', components: [userPicker('adm_pick_cooldown', 'Member')], ephemeral: true });
+        case 'adm_cooldown': return i.reply({ content: 'Pick a member to **set** a reset cooldown on (starts the clock now):', components: [userPicker('adm_pick_cooldown_set', 'Member')], ephemeral: true });
+        case 'adm_clearcooldown': return i.reply({ content: 'Pick a member to **clear** the reset cooldown for:', components: [userPicker('adm_pick_cooldown', 'Member')], ephemeral: true });
         case 'adm_setchannel': return i.reply({ content: 'Pick the **announcement channel**:', components: [channelPicker('adm_pick_setchannel', 'Announcement channel')], ephemeral: true });
         case 'adm_lock': return i.reply({ content: 'Pick a channel to **lock** (view + react only):', components: [channelPicker('adm_pick_lock', 'Channel to lock')], ephemeral: true });
         case 'adm_unlock': return i.reply({ content: 'Pick a channel to **unlock**:', components: [channelPicker('adm_pick_unlock', 'Channel to unlock')], ephemeral: true });
@@ -427,6 +527,21 @@ client.on('interactionCreate', async (i) => {
           return i.reply({ content: '\u2705 Suggestion panel posted here.', ephemeral: true });
         case 'adm_forceunlock':
           return i.reply({ content: 'Pick a member to **force-unlock** (clears their active session so they can log in again now):', components: [userPicker('adm_pick_forceunlock', 'Member to unlock')], ephemeral: true });
+        case 'adm_relock':
+          return i.reply({ content: 'Pick a member to **re-lock** (signs them out everywhere and re-applies the single-use lock):', components: [userPicker('adm_pick_relock', 'Member to re-lock')], ephemeral: true });
+        case 'adm_unperm':
+          return i.reply({ content: 'Pick a member to **remove permanent status** from (re-applies single-use lock + cooldown):', components: [userPicker('adm_pick_unperm', 'Member')], ephemeral: true });
+        case 'adm_protocol_on':
+          return i.reply({ content: 'Pick a member to **enable the Protocol page** for:', components: [userPicker('adm_pick_protocol_on', 'Member')], ephemeral: true });
+        case 'adm_protocol_off':
+          return i.reply({ content: 'Pick a member to **disable the Protocol page** for:', components: [userPicker('adm_pick_protocol_off', 'Member')], ephemeral: true });
+        case 'adm_inactive':
+          return adminInactive(i);
+        case 'adm_export':
+          return adminExport(i);
+        case 'adm_slowmode_off':
+          try { await i.channel.setRateLimitPerUser(0); return i.reply({ content: '\u2705 Slowmode turned **off** in this channel.', ephemeral: true }); }
+          catch (e) { return i.reply({ content: '\u26A0\uFE0F Could not change slowmode here.', ephemeral: true }); }
         case 'adm_lookup':
           return i.reply({ content: 'Pick a member to **look up**:', components: [userPicker('adm_pick_lookup', 'Member')], ephemeral: true });
         case 'adm_wipe':
@@ -491,6 +606,31 @@ client.on('interactionCreate', async (i) => {
         const r = await pool.query('UPDATE accounts SET session_token=NULL WHERE discord_id=$1 RETURNING username', [uid]);
         if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
         return i.update({ content: '\uD83D\uDD13 Session cleared for <@' + uid + '> (`' + r.rows[0].username + '`). They can log in again right now.', components: [] });
+      }
+      if (i.customId === 'adm_pick_relock') {
+        const r = await pool.query('UPDATE accounts SET session_token=NULL, last_reset_at=now() WHERE discord_id=$1 RETURNING username', [uid]);
+        if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
+        return i.update({ content: '\uD83D\uDD12 Re-locked <@' + uid + '> (`' + r.rows[0].username + '`). Signed out everywhere; single-use lock + cooldown re-applied.', components: [] });
+      }
+      if (i.customId === 'adm_pick_cooldown_set') {
+        const r = await pool.query('UPDATE accounts SET last_reset_at=now() WHERE discord_id=$1 RETURNING username', [uid]);
+        if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
+        return i.update({ content: '\u23F3 Cooldown started for <@' + uid + '> (`' + r.rows[0].username + '`). They can reset again in ' + RESET_COOLDOWN_DAYS + ' days.', components: [] });
+      }
+      if (i.customId === 'adm_pick_unperm') {
+        const r = await pool.query('UPDATE accounts SET perm=false WHERE discord_id=$1 RETURNING username', [uid]);
+        if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
+        return i.update({ content: '\u2705 Removed permanent status from <@' + uid + '> (`' + r.rows[0].username + '`). Standard rules (single-use lock + cooldown) now apply.', components: [] });
+      }
+      if (i.customId === 'adm_pick_protocol_on') {
+        const r = await pool.query('UPDATE accounts SET protocol=true WHERE discord_id=$1 RETURNING username', [uid]);
+        if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
+        return i.update({ content: '\uD83E\uDDEC Protocol page **enabled** for <@' + uid + '> (`' + r.rows[0].username + '`). Visible after their next refresh.', components: [] });
+      }
+      if (i.customId === 'adm_pick_protocol_off') {
+        const r = await pool.query('UPDATE accounts SET protocol=false WHERE discord_id=$1 RETURNING username', [uid]);
+        if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
+        return i.update({ content: '\uD83D\uDD12 Protocol page **disabled** for <@' + uid + '> (`' + r.rows[0].username + '`).', components: [] });
       }
       if (i.customId === 'adm_pick_lookup') {
         const r = await pool.query('SELECT username, banned, perm, protocol, session_token, created_at, last_login_at, last_reset_at FROM accounts WHERE discord_id=$1', [uid]);
