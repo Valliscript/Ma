@@ -1,4 +1,4 @@
-/* Everlong access bot + login API
+* Everlong access bot + login API
  * One Railway service: Discord bot (buyer access, admin panel, tickets) + Express login API.
  * Storage: Postgres (Railway "Add Postgres" sets DATABASE_URL).
  */
@@ -494,17 +494,53 @@ client.on('interactionCreate', async (i) => {
       }
       if (i.customId === 'adm_pick_lookup') {
         const r = await pool.query('SELECT username, banned, perm, protocol, session_token, created_at, last_login_at, last_reset_at FROM accounts WHERE discord_id=$1', [uid]);
-        if (!r.rowCount) return i.update({ content: 'No account for <@' + uid + '> yet.', components: [] });
+        const member = await i.guild.members.fetch(uid).catch(() => null);
+        const wl = hasWhitelist(member);
+
+        if (!r.rowCount) {
+          const emb0 = new EmbedBuilder().setColor(ADMIN_COLOR).setAuthor({ name: 'EVERLONG | ACCOUNT LOOKUP' })
+            .setThumbnail(member ? member.user.displayAvatarURL() : SITE_ICON)
+            .setTitle(member ? member.user.username : 'Unknown member')
+            .setDescription('**No site account created yet.**')
+            .addFields(
+              { name: 'Discord', value: '<@' + uid + '>', inline: true },
+              { name: 'Whitelisted', value: wl ? '\u2705 Yes' : '\u274C No', inline: true },
+              { name: 'In server', value: member ? '\u2705 Yes' : '\u274C No', inline: true }
+            ).setFooter({ text: 'User ID ' + uid });
+          return i.update({ content: '', embeds: [emb0], components: [] });
+        }
+
         const a = r.rows[0];
-        const fmt = (d) => d ? '<t:' + Math.floor(new Date(d).getTime() / 1000) + ':R>' : '-';
-        const emb = new EmbedBuilder().setColor(ADMIN_COLOR).setAuthor({ name: 'Account lookup' }).setTitle(a.username)
+        const fmt = (d) => d ? '<t:' + Math.floor(new Date(d).getTime() / 1000) + ':R>' : '\u2014';
+        const fmtFull = (d) => d ? '<t:' + Math.floor(new Date(d).getTime() / 1000) + ':f>' : '\u2014';
+
+        const lg = await pool.query(
+          'SELECT COUNT(*) FILTER (WHERE success) AS ok, COUNT(*) FILTER (WHERE NOT success) AS fail, COUNT(DISTINCT ip) FILTER (WHERE success) AS devices, MAX(created_at) FILTER (WHERE NOT success) AS last_fail FROM login_log WHERE discord_id=$1', [uid]);
+        const stats = lg.rows[0] || {};
+
+        let cooldown = 'No cooldown';
+        if (!a.perm && a.last_reset_at) {
+          const next = new Date(a.last_reset_at).getTime() + RESET_COOLDOWN_DAYS * 86400000;
+          cooldown = next > Date.now() ? 'Until <t:' + Math.floor(next / 1000) + ':R>' : '\u2705 Can reset now';
+        } else if (a.perm) { cooldown = '\u221E None (perm)'; }
+
+        const emb = new EmbedBuilder().setColor(ADMIN_COLOR).setAuthor({ name: 'EVERLONG | ACCOUNT LOOKUP' })
+          .setThumbnail(member ? member.user.displayAvatarURL() : SITE_ICON)
+          .setTitle(a.username)
+          .setDescription('<@' + uid + '>' + (member ? '' : '  \u00b7  *left the server*'))
           .addFields(
-            { name: 'Type', value: a.perm ? '\uD83D\uDD11 Permanent' : 'Standard', inline: true },
+            { name: 'Account type', value: a.perm ? '\uD83D\uDD11 Permanent' : '\uD83D\uDC64 Standard', inline: true },
             { name: 'Status', value: a.banned ? '\uD83D\uDD28 Banned' : '\u2705 Active', inline: true },
-            { name: 'Logged in now', value: a.session_token ? 'Yes' : 'No', inline: true },
-            { name: 'Created', value: fmt(a.created_at), inline: true },
+            { name: 'Whitelisted', value: wl ? '\u2705 Yes' : '\u274C No', inline: true },
+            { name: 'Protocol page', value: a.protocol ? '\uD83E\uDDEC Enabled' : '\uD83D\uDD12 Locked', inline: true },
+            { name: 'Logged in now', value: a.session_token ? '\uD83D\uDFE2 Yes' : '\u26AB No', inline: true },
+            { name: 'Reset cooldown', value: cooldown, inline: true },
+            { name: 'Created', value: fmtFull(a.created_at), inline: true },
             { name: 'Last login', value: fmt(a.last_login_at), inline: true },
-            { name: 'Protocol page', value: a.protocol ? '\uD83E\uDDEC Enabled' : 'Locked', inline: true }
+            { name: 'Last reset', value: fmt(a.last_reset_at), inline: true },
+            { name: 'Successful logins', value: String(stats.ok || 0), inline: true },
+            { name: 'Failed attempts', value: String(stats.fail || 0) + (stats.last_fail ? ' (last ' + fmt(stats.last_fail) + ')' : ''), inline: true },
+            { name: 'Devices seen', value: String(stats.devices || 0), inline: true }
           ).setFooter({ text: 'User ID ' + uid });
         return i.update({ content: '', embeds: [emb], components: [] });
       }
@@ -637,7 +673,6 @@ client.on('interactionCreate', async (i) => {
           'Username: **' + row.username + '**',
           'Status: ' + (row.banned ? '\u26d4 banned' : (row.session_token ? '\uD83D\uDFE2 active on a device' : '\u26aa not logged in yet')),
           'Last login: ' + (row.last_login_at ? '<t:' + Math.floor(new Date(row.last_login_at).getTime() / 1000) + ':R>' : 'never'),
-          'Protocol: ' + (row.protocol ? '\uD83E\uDDEC enabled' : 'locked'),
           'Reset available: ' + (Date.now() >= nextTs ? '**now**' : '<t:' + Math.floor(nextTs / 1000) + ':R>')
         ].join('\n'), ephemeral: true });
       }
