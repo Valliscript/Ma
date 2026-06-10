@@ -540,8 +540,13 @@ client.on('interactionCreate', async (i) => {
           return i.reply({ content: 'Pick a member to **force-unlock** (clears their active session so they can log in again now):', components: [userPicker('adm_pick_forceunlock', 'Member to unlock')], ephemeral: true });
         case 'adm_relock':
           return i.reply({ content: 'Pick a member to **re-lock** (signs them out everywhere and re-applies the single-use lock):', components: [userPicker('adm_pick_relock', 'Member to re-lock')], ephemeral: true });
-        case 'adm_unperm':
-          return i.reply({ content: 'Pick a member to **remove permanent status** from (re-applies single-use lock + cooldown):', components: [userPicker('adm_pick_unperm', 'Member')], ephemeral: true });
+        case 'adm_unperm': {
+          const pr = await pool.query('SELECT username, discord_id FROM accounts WHERE perm=true ORDER BY username ASC LIMIT 25');
+          if (!pr.rowCount) return i.reply({ content: 'There are no permanent accounts right now.', ephemeral: true });
+          const menu = new StringSelectMenuBuilder().setCustomId('adm_pick_unperm').setPlaceholder('Pick a permanent account to revoke').setMinValues(1).setMaxValues(1)
+            .addOptions(pr.rows.map(function (a) { return { label: a.username, value: a.discord_id, description: 'Remove permanent status' }; }));
+          return i.reply({ content: 'Select the **permanent account** to revoke (re-applies single-use lock + cooldown):', components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+        }
         case 'adm_protocol_on':
           return i.reply({ content: 'Pick a member to **enable the Protocol page** for:', components: [userPicker('adm_pick_protocol_on', 'Member')], ephemeral: true });
         case 'adm_protocol_off':
@@ -627,11 +632,6 @@ client.on('interactionCreate', async (i) => {
         const r = await pool.query('UPDATE accounts SET last_reset_at=now() WHERE discord_id=$1 RETURNING username', [uid]);
         if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
         return i.update({ content: '\u23F3 Cooldown started for <@' + uid + '> (`' + r.rows[0].username + '`). They can reset again in ' + RESET_COOLDOWN_DAYS + ' days.', components: [] });
-      }
-      if (i.customId === 'adm_pick_unperm') {
-        const r = await pool.query('UPDATE accounts SET perm=false WHERE discord_id=$1 RETURNING username', [uid]);
-        if (!r.rowCount) return i.update({ content: 'That user has no account.', components: [] });
-        return i.update({ content: '\u2705 Removed permanent status from <@' + uid + '> (`' + r.rows[0].username + '`). Standard rules (single-use lock + cooldown) now apply.', components: [] });
       }
       if (i.customId === 'adm_pick_protocol_on') {
         const r = await pool.query('UPDATE accounts SET protocol=true WHERE discord_id=$1 RETURNING username', [uid]);
@@ -748,6 +748,13 @@ client.on('interactionCreate', async (i) => {
     }
 
     /* ===== admin string-select menus ===== */
+    if (i.isStringSelectMenu() && i.customId === 'adm_pick_unperm') {
+      if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
+      const uid = i.values[0];
+      const r = await pool.query('UPDATE accounts SET perm=false, session_token=NULL, last_reset_at=now() WHERE discord_id=$1 RETURNING username', [uid]);
+      if (!r.rowCount) return i.update({ content: 'That account no longer exists.', components: [] });
+      return i.update({ content: '\u2705 Removed permanent status from `' + r.rows[0].username + '`. Standard rules (single-use lock + cooldown) now apply.', components: [] });
+    }
     if (i.isStringSelectMenu() && i.customId.startsWith('adm_timeout_dur:')) {
       if (!isAdmin(i)) return i.reply({ content: 'Administrators only.', ephemeral: true });
       const uid = i.customId.split(':')[1];
